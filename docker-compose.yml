@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: gametaste
+      POSTGRES_PASSWORD: gametaste
+      POSTGRES_DB: gametaste
+    ports:
+      # host port 5434, not 5432 - this machine already has a native
+      # Postgres (/Library/PostgreSQL/15) bound to 5432 system-wide.
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gametaste"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
