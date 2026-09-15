@@ -38,7 +38,6 @@ async def run() -> None:
                 logger.exception("Enrichment failed for game %d (%s)", game.id, game.name)
                 continue
 
-            game.difficulty_score = enrichment.difficulty_score
             game.story_gameplay_ratio = enrichment.story_gameplay_ratio
             game.content_warnings = enrichment.content_warnings
             game.enriched_at = datetime.now(UTC)

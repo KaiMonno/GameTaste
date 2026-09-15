@@ -10,7 +10,6 @@ export interface GameOut {
   hltb_main: number | null;
   hltb_main_extra: number | null;
   hltb_completionist: number | null;
-  difficulty_score: number | null;
   story_gameplay_ratio: number | null;
   content_warnings: string[];
 }
@@ -33,7 +32,6 @@ export interface HardFilters {
 
 export interface SoftPreferences {
   target_length_hours: number | null;
-  target_difficulty: number | null;
   target_story_gameplay_ratio: number | null;
   target_popularity: number | null;
   similar_to_game_id: number | null;

@@ -39,7 +39,6 @@ async def explain_candidates(
             "summary": game.summary,
             "genres": game.genres,
             "hltb_main": game.hltb_main,
-            "difficulty_score": game.difficulty_score,
             "story_gameplay_ratio": game.story_gameplay_ratio,
         }
         for game in games

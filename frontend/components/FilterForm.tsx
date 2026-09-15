@@ -13,7 +13,6 @@ export default function FilterForm({ onSubmit, loading }: Props) {
   const [requireMultiplayer, setRequireMultiplayer] = useState(false);
   const [minReviewScore, setMinReviewScore] = useState<string>("");
   const [targetLengthHours, setTargetLengthHours] = useState<string>("");
-  const [targetDifficulty, setTargetDifficulty] = useState<string>("");
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,7 +28,6 @@ export default function FilterForm({ onSubmit, loading }: Props) {
 
     const softPreferences: SoftPreferences = {
       target_length_hours: targetLengthHours ? Number(targetLengthHours) : null,
-      target_difficulty: targetDifficulty ? Number(targetDifficulty) : null,
       target_story_gameplay_ratio: null,
       target_popularity: null,
       similar_to_game_id: null,
@@ -48,19 +46,6 @@ export default function FilterForm({ onSubmit, loading }: Props) {
           onChange={(e) => setTargetLengthHours(e.target.value)}
           className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
           placeholder="e.g. 15"
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium">Target difficulty (0-100)</label>
-        <input
-          type="number"
-          min={0}
-          max={100}
-          value={targetDifficulty}
-          onChange={(e) => setTargetDifficulty(e.target.value)}
-          className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-          placeholder="e.g. 40"
         />
       </div>
 

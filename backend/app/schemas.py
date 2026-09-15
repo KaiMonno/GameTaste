@@ -15,7 +15,6 @@ class GameOut(BaseModel):
     hltb_main: float | None
     hltb_main_extra: float | None
     hltb_completionist: float | None
-    difficulty_score: float | None
     story_gameplay_ratio: float | None
     content_warnings: list[str]
 
@@ -37,7 +36,6 @@ class SoftPreferences(BaseModel):
     """
 
     target_length_hours: float | None = None
-    target_difficulty: float | None = None  # 0-100
     target_story_gameplay_ratio: float | None = None  # 0 (pure gameplay) - 100 (pure story)
     target_popularity: float | None = None  # rating_count target, "nichety" if low
     similar_to_game_id: int | None = None

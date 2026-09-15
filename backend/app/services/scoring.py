@@ -16,7 +16,6 @@ from app.schemas import HardFilters, SoftPreferences
 WEIGHTS = {
     "length": 1.0,
     "review_score": 1.0,
-    "difficulty": 1.0,
     "popularity": 0.5,
     "story_gameplay": 1.0,
     "similarity": 1.5,
@@ -71,11 +70,6 @@ def score_candidate(game: Game, preferences: SoftPreferences) -> float:
         axis_scores["length"] = _distance_score(game.hltb_main, preferences.target_length_hours, scale=20)
 
     axis_scores["review_score"] = (game.igdb_rating or 50) / 100
-
-    if preferences.target_difficulty is not None:
-        axis_scores["difficulty"] = _distance_score(
-            game.difficulty_score, preferences.target_difficulty, scale=50
-        )
 
     if preferences.target_popularity is not None:
         axis_scores["popularity"] = _distance_score(

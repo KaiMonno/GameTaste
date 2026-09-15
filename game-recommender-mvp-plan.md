@@ -13,13 +13,13 @@ The profile system (Steam import, wishlist, PC specs, etc.) is valuable but shou
 |---|---|---|
 | Genre, platform, IGDB score, popularity, similar games, game modes (SP/MP/co-op) | **IGDB API** | Solid, structured, official. Rate-limited (4 req/sec) — needs local caching, not live calls per query. |
 | Game length | **HowLongToBeat** | **No official API.** Community libraries (e.g. `howlongtobeatpy`) scrape HLTB's site and can break anytime. Matching IGDB titles to HLTB titles requires fuzzy string matching (titles/editions differ). Budget time for this. |
-| Difficulty | Nowhere structured | Not in IGDB or HLTB. Options: (a) LLM-inferred from Steam/user reviews + description, (b) Steam user tags, (c) manual curation for a seed set, (d) skip for MVP and mark "estimated" or omit entirely at launch. |
+| Difficulty | Nowhere structured | **Decision: excluded entirely, not just deferred.** No structured source exists (not in IGDB or HLTB), and LLM-inferred difficulty was judged too unreliable to be worth the estimate disclaimer. Not a filter, not a scoring axis, not an enrichment field. |
 | Story vs. gameplay ratio | Nowhere structured | Same problem — likely needs an LLM to infer a 0–100 score from IGDB summary + genre/theme tags + review text, cached once per game. Not real-time. |
 | Content warnings | Nowhere structured | Consider "Does It Trigger" / community wikis / Steam tags as heuristic input to an LLM classifier, cached per game. Legally/ethically, don't overclaim accuracy — always show "AI-estimated, verify yourself" disclaimer. |
 | Mobile exclusion | IGDB `platforms` field | Straightforward filter. |
 | Backlog exclusion (owned/played) | Steam API (has official API) / Backloggd (**no public API** — scraping is ToS-gray) | Steam import is easy and official. Backloggd import is a "maybe later, unofficial" feature. |
 
-**Takeaway:** IGDB gives you genre/platform/score/popularity/similarity/multiplayer cleanly. Everything else (length, difficulty, story-vs-gameplay, content warnings) requires either scraping (fragile) or LLM-inference-and-cache (more reliable, costs tokens once per game, not per query). Plan for a **pre-processing pipeline** that enriches a game once and stores it, rather than computing this live per user request.
+**Takeaway:** IGDB gives you genre/platform/score/popularity/similarity/multiplayer cleanly. Everything else (length, story-vs-gameplay, content warnings) requires either scraping (fragile) or LLM-inference-and-cache (more reliable, costs tokens once per game, not per query). Plan for a **pre-processing pipeline** that enriches a game once and stores it, rather than computing this live per user request. Difficulty was considered here but is excluded from scope, not just this pipeline.
 
 ---
 
@@ -27,7 +27,7 @@ The profile system (Steam import, wishlist, PC specs, etc.) is valuable but shou
 
 ```
 [IGDB API] ---nightly sync---> [Postgres: games table] <---enrichment job--- [Claude API]
-[HLTB match]---nightly sync--/        |                (difficulty, story/gameplay,
+[HLTB match]---nightly sync--/        |                (story/gameplay,
                                        |                 content warnings — cached once)
                                        v
                               [Recommendation Engine]
@@ -47,7 +47,7 @@ The profile system (Steam import, wishlist, PC specs, etc.) is valuable but shou
 - **DB:** Postgres. One `games` table as the unified, enriched record (IGDB fields + HLTB length + LLM-derived tags), refreshed on a schedule, not per request.
 - **Frontend:** Simple web form matching your filter list → results page.
 - **LLM use has two distinct jobs, don't conflate them:**
-  1. **Offline enrichment** (batch, cached): infer difficulty, story/gameplay ratio, content warnings once per game.
+  1. **Offline enrichment** (batch, cached): infer story/gameplay ratio, content warnings once per game.
   2. **Online explanation** (per query, on the ~20 shortlisted candidates only): generate the "why/why not" blurb and reconcile it into a % match — cheap because it's only run on a short pre-filtered list, not the whole catalog.
 
 ---
@@ -61,7 +61,6 @@ Genre exclude, platform, "no mobile," content-warning excludes, multiplayer requ
 Weighted distance from user's target on continuous/ordinal axes:
 - Game length (distance from target hours)
 - Review score (threshold or gradient above a minimum)
-- Difficulty (distance from target)
 - Popularity/nichety (distance from target — e.g. IGDB `rating_count`/Steam review count as a proxy)
 - Story vs. gameplay (distance from target ratio)
 - Similarity to a reference game (use IGDB's `similar_games` field as a first pass; a proper embedding-similarity model is a v2 upgrade)
@@ -81,7 +80,7 @@ Feed each candidate's stats + the user's stated preferences to Claude, ask for a
 - Store unified `games` table
 
 **Phase 2 — Enrichment pipeline**
-- LLM batch job: difficulty, story/gameplay ratio, content warnings per game (cached, re-run only when stale)
+- LLM batch job: story/gameplay ratio, content warnings per game (cached, re-run only when stale)
 - Manual spot-check a sample for accuracy before trusting it at scale
 
 **Phase 3 — Core recommendation engine (no accounts, no profile)**
@@ -108,7 +107,7 @@ Feed each candidate's stats + the user's stated preferences to Claude, ask for a
 ## 5. Open Risks to Resolve Before Building
 
 1. **HLTB has no sanctioned API** — confirm you're comfortable with a scraping dependency, or scope MVP to games where length data is missing gracefully (show "unknown" rather than blocking).
-2. **Difficulty / story-vs-gameplay / content warnings have no ground truth** — decide how much you disclose "this is AI-estimated" vs. trying to source community data instead.
+2. **Story-vs-gameplay / content warnings have no ground truth** — decide how much you disclose "this is AI-estimated" vs. trying to source community data instead. (Difficulty had the same problem and was resolved by cutting it entirely rather than disclosing an estimate.)
 3. **% match methodology** — decide early whether it's a transparent formula (more trustworthy, explainable) or LLM-judged (more nuanced, less consistent). Mixing both without a clear reconciliation rule will feel arbitrary to users.
 4. **IGDB rate limits** — you cannot hit IGDB live per user query at scale; the nightly-sync-and-cache model is mandatory, not optional.
 
