@@ -80,7 +80,7 @@ You could collapse this to a single-language stack (Node/TypeScript everywhere, 
 4. **(v2) Embedding job** — generate an embedding per game (description + tags) into `pgvector` for similarity search beyond IGDB's limited `similar_games` field.
 
 **Online (user-facing, request/response):**
-1. User submits filters → FastAPI applies **hard filters** in SQL (genre exclude, platform, no-mobile, content-warning excludes, multiplayer requirement).
+1. User submits filters → FastAPI applies **hard filters** in SQL (genre include/exclude, platform, no-mobile and no-DLC/expansions always on, content-warning excludes, multiplayer requirement).
 2. FastAPI computes **weighted soft-match score** in-process (length distance, review score, popularity/nichety distance, story/gameplay distance, similarity score) → ranks candidates.
 3. Top ~15–20 candidates sent to Claude in a single batched call (not 15 separate calls) asking for a "why you'll like it / why you might not" per game, returned as structured JSON.
 4. Response merged with the numeric % match (computed by the formula, not the LLM — keeps the ranking auditable and consistent) and returned to frontend.
@@ -98,6 +98,7 @@ games
   genres[], platforms[], game_modes[]      -- from IGDB
   igdb_rating, igdb_rating_count           -- score + popularity proxy
   similar_game_ids[]                       -- from IGDB
+  igdb_category                            -- from IGDB (main_game/dlc/expansion/etc - excludes DLC)
   hltb_main, hltb_main_extra, hltb_completionist
   story_gameplay_ratio                     -- LLM-enriched
   content_warnings[]                       -- LLM-enriched

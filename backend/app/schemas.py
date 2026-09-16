@@ -20,11 +20,15 @@ class GameOut(BaseModel):
 
 
 class HardFilters(BaseModel):
-    """Binary pass/fail filters, applied in SQL before any scoring happens."""
+    """Binary pass/fail filters, applied in SQL before any scoring happens.
 
+    Mobile platforms and DLC/expansions are always excluded - not user-
+    configurable, see services/scoring.py apply_hard_filters.
+    """
+
+    include_genres: list[str] = []
     exclude_genres: list[str] = []
     platforms: list[str] = []
-    exclude_mobile: bool = True
     exclude_content_warnings: list[str] = []
     require_multiplayer: bool = False
     min_review_score: float | None = None
@@ -56,3 +60,14 @@ class RecommendationResult(BaseModel):
 
 class RecommendationResponse(BaseModel):
     results: list[RecommendationResult]
+
+
+class FacetsOut(BaseModel):
+    """Distinct genre/platform values actually present in the synced catalog -
+    used to populate filter UI options so they never drift from real data.
+    Mobile platforms are omitted since they're always excluded server-side
+    (see services/scoring.py MOBILE_PLATFORMS) and would be a dead-end filter.
+    """
+
+    genres: list[str]
+    platforms: list[str]

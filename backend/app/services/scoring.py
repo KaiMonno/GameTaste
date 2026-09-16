@@ -5,7 +5,7 @@ for MVP (not LLM-judged) so it stays auditable and consistent - see "Open Risks"
 in that doc.
 """
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, or_, select
 
 from app.models import Game
 from app.schemas import HardFilters, SoftPreferences
@@ -21,6 +21,18 @@ WEIGHTS = {
     "similarity": 1.5,
 }
 
+# Platforms always excluded, not user-configurable. Beyond the two obvious
+# ones, IGDB's platform list also includes older phone-era platforms that are
+# just as much "mobile" - left out of a first pass, added after noticing them
+# still showing up in games.platforms / the facets filter list.
+MOBILE_PLATFORMS = ["Android", "iOS", "Windows Phone", "Windows Mobile", "Legacy Mobile Device", "N-Gage"]
+
+# IGDB `category` values that mean "not a standalone game" - dlc_addon (1) and
+# expansion (2). Always excluded, not user-configurable. Rows synced before
+# `category` was tracked have igdb_category = None and are kept rather than
+# dropped (unknown is treated as "main game", not as DLC).
+DLC_CATEGORIES = [1, 2]
+
 
 def apply_hard_filters(filters: HardFilters) -> Select:
     """Build the SQL query that reduces the catalog to a candidate set.
@@ -28,15 +40,20 @@ def apply_hard_filters(filters: HardFilters) -> Select:
     """
     query = select(Game)
 
+    for platform in MOBILE_PLATFORMS:
+        query = query.where(~Game.platforms.any(platform))
+
+    query = query.where(or_(Game.igdb_category.is_(None), Game.igdb_category.not_in(DLC_CATEGORIES)))
+
+    if filters.include_genres:
+        query = query.where(Game.genres.overlap(filters.include_genres))
+
     if filters.exclude_genres:
         for genre in filters.exclude_genres:
             query = query.where(~Game.genres.any(genre))
 
     if filters.platforms:
         query = query.where(Game.platforms.overlap(filters.platforms))
-
-    if filters.exclude_mobile:
-        query = query.where(~Game.platforms.any("Android")).where(~Game.platforms.any("iOS"))
 
     if filters.exclude_content_warnings:
         for warning in filters.exclude_content_warnings:

@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import ARRAY, DateTime, Float, Integer, String, Text, func
+from sqlalchemy import DateTime, Float, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -23,6 +24,11 @@ class Game(Base):
     genres: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     platforms: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     game_modes: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+
+    # IGDB's own category enum (0 = main_game, 1 = dlc_addon, 2 = expansion, ...).
+    # Null for rows synced before this field existed. Used to exclude DLC/
+    # expansions from recommendations by default - see services/scoring.py.
+    igdb_category: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     igdb_rating: Mapped[float | None] = mapped_column(Float, nullable=True)
     igdb_rating_count: Mapped[int | None] = mapped_column(Integer, nullable=True)

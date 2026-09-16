@@ -55,7 +55,7 @@ The profile system (Steam import, wishlist, PC specs, etc.) is valuable but shou
 ## 3. Recommendation Logic
 
 **Step 1 — Hard filters (reduce catalog to candidates):**
-Genre exclude, platform, "no mobile," content-warning excludes, multiplayer requirement if mandatory. These are binary — a game either passes or it's out.
+Genre include/exclude, platform, "no mobile" (always on, not user-facing), "no DLC/expansions" (always on, not user-facing), content-warning excludes, multiplayer requirement if mandatory. These are binary — a game either passes or it's out.
 
 **Step 2 — Soft scoring (rank remaining candidates):**
 Weighted distance from user's target on continuous/ordinal axes:

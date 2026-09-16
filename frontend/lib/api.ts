@@ -22,9 +22,9 @@ export interface RecommendationResult {
 }
 
 export interface HardFilters {
+  include_genres: string[];
   exclude_genres: string[];
   platforms: string[];
-  exclude_mobile: boolean;
   exclude_content_warnings: string[];
   require_multiplayer: boolean;
   min_review_score: number | null;
@@ -37,7 +37,25 @@ export interface SoftPreferences {
   similar_to_game_id: number | null;
 }
 
+export interface Facets {
+  genres: string[];
+  platforms: string[];
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+// Genre/platform values actually present in the synced catalog - drives the
+// filter form's options so they never drift from real data (mobile platforms
+// are omitted server-side since they're always excluded from results).
+export async function getFacets(): Promise<Facets> {
+  const res = await fetch(`${API_URL}/games/facets`);
+
+  if (!res.ok) {
+    throw new Error(`Failed to load filter options: ${res.status}`);
+  }
+
+  return res.json();
+}
 
 export async function getRecommendations(
   hardFilters: HardFilters,

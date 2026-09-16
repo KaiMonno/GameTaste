@@ -41,6 +41,7 @@ async def _upsert_page(session, games_page: list[dict]) -> None:
             "igdb_rating": g.get("rating"),
             "igdb_rating_count": g.get("rating_count"),
             "similar_game_ids": g.get("similar_games", []),
+            "igdb_category": g.get("game_type"),
         }
         for g in games_page
     ]

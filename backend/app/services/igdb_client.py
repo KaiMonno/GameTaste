@@ -15,8 +15,16 @@ TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token"
 IGDB_BASE_URL = "https://api.igdb.com/v4"
 
 # Fields pulled per game - matches the "games" table columns sourced from IGDB
-# in game-recommender-architecture.md section 4.
-GAME_FIELDS = "id,name,summary,genres.name,platforms.name,game_modes.name,rating,rating_count,similar_games"
+# in game-recommender-architecture.md section 4. `game_type` is IGDB's own
+# game-vs-DLC-vs-expansion/etc classification (0 = main_game; this field was
+# named `category` in older IGDB docs/versions, confirmed renamed by directly
+# querying `fields *` against a known expansion - it came back with
+# `game_type`, not `category`); used to exclude DLC/expansions from
+# recommendations by default - see services/scoring.py.
+GAME_FIELDS = (
+    "id,name,summary,genres.name,platforms.name,game_modes.name,rating,rating_count,"
+    "similar_games,game_type"
+)
 
 
 class IGDBClient:
