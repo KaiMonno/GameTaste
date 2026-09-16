@@ -55,10 +55,6 @@ def apply_hard_filters(filters: HardFilters) -> Select:
     if filters.platforms:
         query = query.where(Game.platforms.overlap(filters.platforms))
 
-    if filters.exclude_content_warnings:
-        for warning in filters.exclude_content_warnings:
-            query = query.where(~Game.content_warnings.any(warning))
-
     if filters.require_multiplayer:
         query = query.where(Game.game_modes.any("Multiplayer"))
 

@@ -39,10 +39,10 @@ class Game(Base):
     hltb_completionist: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # LLM-enriched (phase 2) - null until the enrichment job has run on this game.
-    # (difficulty was considered but deliberately excluded - no ground truth
-    # source exists and it was cut from scope, see mvp-plan.md section 1.)
+    # (difficulty and content_warnings were both considered but deliberately
+    # excluded - no ground truth source exists for either and both were cut
+    # from scope, see mvp-plan.md section 1.)
     story_gameplay_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
-    content_warnings: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
 
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     enrichment_version: Mapped[int | None] = mapped_column(Integer, nullable=True)

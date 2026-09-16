@@ -78,7 +78,6 @@ async def run(limit: int | None = None, concurrency: int = DEFAULT_CONCURRENCY) 
                 continue
 
             game.story_gameplay_ratio = enrichment.story_gameplay_ratio
-            game.content_warnings = enrichment.content_warnings
             game.enriched_at = datetime.now(UTC)
             game.enrichment_version = ENRICHMENT_VERSION
             await session.commit()

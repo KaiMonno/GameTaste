@@ -73,7 +73,6 @@ export default function FilterForm({ onSubmit, loading }: Props) {
       include_genres: genres,
       exclude_genres: [],
       platforms,
-      exclude_content_warnings: [],
       require_multiplayer: requireMultiplayer,
       min_review_score: minReviewScore ? Number(minReviewScore) : null,
     };

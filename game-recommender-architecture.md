@@ -9,7 +9,7 @@
 | Primary database | **PostgreSQL** | Relational fit for games/users/wishlist; **pgvector** extension for embedding-based "similar to X" search later. |
 | Cache / job broker | **Redis** | Caches hot queries, backs the job queue. |
 | Background jobs & scheduling | **Celery (or Arq for a lighter async-native option) + Celery Beat / cron** | Nightly IGDB sync, HLTB matching, LLM enrichment batches — none of this should run inline on a user request. |
-| LLM | **Claude API (Anthropic)** — used two different ways | (1) Batch enrichment: story-vs-gameplay / content warnings, cached per game. (2) Online: per-candidate "why/why not" explanations on the ~15–20 shortlisted games only. |
+| LLM | **Claude API (Anthropic)** — used two different ways | (1) Batch enrichment: story-vs-gameplay, cached per game. (2) Online: per-candidate "why/why not" explanations on the ~15–20 shortlisted games only. |
 | External data | **IGDB API** (Twitch OAuth), **HowLongToBeat** (via `howlongtobeatpy`, unofficial), **Steam Web API** (phase 6, official) | Core game metadata + length + backlog import. |
 | Auth (phase 5+) | **Clerk or Supabase Auth** (or Auth.js if you want to self-host) | Don't build auth yourself for an MVP; buy it. |
 | Hosting | **Vercel (frontend) + Railway or Fly.io (API, Postgres, Redis, workers)** | Cheap, fast to set up, no need for Kubernetes at this stage. Migrate to AWS/GCP only if/when scale demands it. |
@@ -49,8 +49,7 @@ You could collapse this to a single-language stack (Node/TypeScript everywhere, 
                                                  │  ─ IGDB nightly sync    │
                                                  │  ─ HLTB match + scrape  │
                                                  │  ─ LLM enrichment batch │
-                                                 │    (story/gameplay,     │
-                                                 │    content warnings)    │
+                                                 │    (story/gameplay)     │
                                                  │  ─ Steam import job     │
                                                  └───────────┬─────────────┘
                                                              │
@@ -76,11 +75,11 @@ You could collapse this to a single-language stack (Node/TypeScript everywhere, 
 **Offline (scheduled, not user-facing):**
 1. **IGDB sync job** — nightly pull of games (genres, platforms, IGDB rating, popularity, game modes, similar_games) into `games` table.
 2. **HLTB match job** — for each new/updated game, fuzzy-match title against HLTB, store main/main+extra/completionist hours. Log unmatched titles for review rather than silently dropping them.
-3. **LLM enrichment job** — for each game missing enrichment, one Claude call to infer story-vs-gameplay ratio and content-warning tags from IGDB summary + genre/theme + (optionally) scraped review snippets. Store with a `enriched_at` timestamp and a schema version, so you can re-run cheaply when you improve the prompt later. (Difficulty was considered here too but is out of scope entirely - no reliable ground truth, see mvp-plan.md section 1.)
+3. **LLM enrichment job** — for each game missing enrichment, one Claude call to infer story-vs-gameplay ratio from IGDB summary + genre/theme + (optionally) scraped review snippets. Store with a `enriched_at` timestamp and a schema version, so you can re-run cheaply when you improve the prompt later. (Difficulty and content warnings were both considered here too but are out of scope entirely - no reliable ground truth, see mvp-plan.md section 1.)
 4. **(v2) Embedding job** — generate an embedding per game (description + tags) into `pgvector` for similarity search beyond IGDB's limited `similar_games` field.
 
 **Online (user-facing, request/response):**
-1. User submits filters → FastAPI applies **hard filters** in SQL (genre include/exclude, platform, no-mobile and no-DLC/expansions always on, content-warning excludes, multiplayer requirement).
+1. User submits filters → FastAPI applies **hard filters** in SQL (genre include/exclude, platform, no-mobile and no-DLC/expansions always on, multiplayer requirement).
 2. FastAPI computes **weighted soft-match score** in-process (length distance, review score, popularity/nichety distance, story/gameplay distance, similarity score) → ranks candidates.
 3. Top ~15–20 candidates sent to Claude in a single batched call (not 15 separate calls) asking for a "why you'll like it / why you might not" per game, returned as structured JSON.
 4. Response merged with the numeric % match (computed by the formula, not the LLM — keeps the ranking auditable and consistent) and returned to frontend.
@@ -101,7 +100,6 @@ games
   igdb_category                            -- from IGDB (main_game/dlc/expansion/etc - excludes DLC)
   hltb_main, hltb_main_extra, hltb_completionist
   story_gameplay_ratio                     -- LLM-enriched
-  content_warnings[]                       -- LLM-enriched
   embedding (vector)                       -- v2
   enriched_at, enrichment_version
 

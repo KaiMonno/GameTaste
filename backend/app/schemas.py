@@ -16,7 +16,6 @@ class GameOut(BaseModel):
     hltb_main_extra: float | None
     hltb_completionist: float | None
     story_gameplay_ratio: float | None
-    content_warnings: list[str]
 
 
 class HardFilters(BaseModel):
@@ -29,7 +28,6 @@ class HardFilters(BaseModel):
     include_genres: list[str] = []
     exclude_genres: list[str] = []
     platforms: list[str] = []
-    exclude_content_warnings: list[str] = []
     require_multiplayer: bool = False
     min_review_score: float | None = None
 

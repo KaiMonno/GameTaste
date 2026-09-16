@@ -11,7 +11,6 @@ export interface GameOut {
   hltb_main_extra: number | null;
   hltb_completionist: number | null;
   story_gameplay_ratio: number | null;
-  content_warnings: string[];
 }
 
 export interface RecommendationResult {
@@ -25,7 +24,6 @@ export interface HardFilters {
   include_genres: string[];
   exclude_genres: string[];
   platforms: string[];
-  exclude_content_warnings: string[];
   require_multiplayer: boolean;
   min_review_score: number | null;
 }
