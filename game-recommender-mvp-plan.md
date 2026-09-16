@@ -83,8 +83,12 @@ Feed each candidate's stats + the user's stated preferences to Claude, ask for a
 - Manual spot-check a sample for accuracy before trusting it at scale — **done**, spot-checked twice (8-game and 6-game batches), output was specific and accurate both times
 
 **Phase 3 — Core recommendation engine (no accounts, no profile)**
-- Filter form → hard filter → soft-score → return ranked list, no LLM blurbs yet (just numeric % match)
-- This validates whether the scoring logic *feels* right before spending LLM budget on explanations
+- Filter form → hard filter → soft-score → return ranked list, no LLM blurbs yet (just numeric % match) — **done**
+- This validates whether the scoring logic *feels* right before spending LLM budget on explanations —
+  **validated**: tested each soft-scoring axis independently and combined (story/gameplay ratio, popularity,
+  length, genre+platform hard filters together) against the real 415-game catalog; results tracked distance
+  from target sensibly with no WEIGHTS tuning needed. `similar_to_game_id` is wired on the backend but has no
+  frontend UI yet (needs a game-search/picker, not just a number field) - left for a later pass.
 
 **Phase 4 — Explanations**
 - Add the per-candidate LLM "why/why not" call on the top N results

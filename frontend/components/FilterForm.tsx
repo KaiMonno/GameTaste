@@ -54,6 +54,8 @@ export default function FilterForm({ onSubmit, loading }: Props) {
   const [requireMultiplayer, setRequireMultiplayer] = useState(false);
   const [minReviewScore, setMinReviewScore] = useState<string>("");
   const [targetLengthHours, setTargetLengthHours] = useState<string>("");
+  const [targetStoryGameplayRatio, setTargetStoryGameplayRatio] = useState<string>("");
+  const [targetPopularity, setTargetPopularity] = useState<string>("");
 
   useEffect(() => {
     getFacets()
@@ -79,8 +81,10 @@ export default function FilterForm({ onSubmit, loading }: Props) {
 
     const softPreferences: SoftPreferences = {
       target_length_hours: targetLengthHours ? Number(targetLengthHours) : null,
-      target_story_gameplay_ratio: null,
-      target_popularity: null,
+      target_story_gameplay_ratio: targetStoryGameplayRatio ? Number(targetStoryGameplayRatio) : null,
+      target_popularity: targetPopularity ? Number(targetPopularity) : null,
+      // "Similar to a specific game" needs a game-search UI to pick a
+      // reference game - not built yet, left for a later pass.
       similar_to_game_id: null,
     };
 
@@ -97,6 +101,35 @@ export default function FilterForm({ onSubmit, loading }: Props) {
           onChange={(e) => setTargetLengthHours(e.target.value)}
           className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
           placeholder="e.g. 15"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium">Story vs. gameplay focus (0-100)</label>
+        <p className="text-xs text-gray-500">0 = pure gameplay, 100 = pure narrative. AI-estimated per game.</p>
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={targetStoryGameplayRatio}
+          onChange={(e) => setTargetStoryGameplayRatio(e.target.value)}
+          className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+          placeholder="e.g. 70 for story-heavy"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium">Popularity target</label>
+        <p className="text-xs text-gray-500">
+          Lower = more niche/hidden-gem, higher = more mainstream. Typical range ~400-6000.
+        </p>
+        <input
+          type="number"
+          min={0}
+          value={targetPopularity}
+          onChange={(e) => setTargetPopularity(e.target.value)}
+          className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+          placeholder="e.g. 500 for a hidden gem"
         />
       </div>
 
