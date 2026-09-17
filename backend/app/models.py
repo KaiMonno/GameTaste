@@ -44,6 +44,13 @@ class Game(Base):
     # from scope, see mvp-plan.md section 1.)
     story_gameplay_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # LLM-classified tags IGDB has no genre for (Horror, Roguelike, ...) - see
+    # services/llm_enrichment.py CUSTOM_CATEGORIES for the controlled taxonomy.
+    # Filtered against exactly like genres (see services/scoring.py
+    # apply_hard_filters) - the recommendation engine and frontend don't
+    # distinguish "IGDB genre" from "our own classification".
+    custom_categories: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     enrichment_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 

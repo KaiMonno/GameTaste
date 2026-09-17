@@ -119,17 +119,18 @@ export default function FilterForm({ onSubmit, loading }: Props) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium">Popularity target</label>
+        <label className="block text-sm font-medium">Popularity target (0-100)</label>
         <p className="text-xs text-gray-500">
-          Lower = more niche/hidden-gem, higher = more mainstream. Typical range ~400-6000.
+          0 = most niche/hidden-gem, 100 = most mainstream. Relative to the games matching your other filters.
         </p>
         <input
           type="number"
           min={0}
+          max={100}
           value={targetPopularity}
           onChange={(e) => setTargetPopularity(e.target.value)}
           className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-          placeholder="e.g. 500 for a hidden gem"
+          placeholder="e.g. 15 for a hidden gem, 85 for mainstream"
         />
       </div>
 

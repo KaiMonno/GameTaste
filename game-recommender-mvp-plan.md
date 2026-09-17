@@ -16,6 +16,7 @@ The profile system (Steam import, wishlist, PC specs, etc.) is valuable but shou
 | Difficulty | Nowhere structured | **Decision: excluded entirely, not just deferred.** No structured source exists (not in IGDB or HLTB), and LLM-inferred difficulty was judged too unreliable to be worth the estimate disclaimer. Not a filter, not a scoring axis, not an enrichment field. |
 | Story vs. gameplay ratio | Nowhere structured | Same problem — likely needs an LLM to infer a 0–100 score from IGDB summary + genre/theme tags + review text, cached once per game. Not real-time. |
 | Content warnings | Nowhere structured | **Decision: excluded entirely, not just deferred** (same call as difficulty, same reasoning — no ground truth source, not worth the estimate-disclaimer burden). Not a filter, not a scoring axis, not an enrichment field. |
+| Custom categories (Horror, Roguelike, Roguelite, Soulslike, Metroidvania, CRPG, Immersive Sim) | Nowhere in IGDB — no genre field covers these | **Added in Phase 3.5.** LLM-classified against a closed taxonomy (never freeform), cached per game like story_gameplay_ratio. Filtered exactly like an IGDB genre — `include_genres`/`exclude_genres` match against genres OR custom_categories, and the `/games/facets` endpoint unions both into one list, so the frontend and API consumers never need to know which source a tag came from. |
 | Mobile exclusion | IGDB `platforms` field | Straightforward filter. |
 | Backlog exclusion (owned/played) | Steam API (has official API) / Backloggd (**no public API** — scraping is ToS-gray) | Steam import is easy and official. Backloggd import is a "maybe later, unofficial" feature. |
 
@@ -87,8 +88,24 @@ Feed each candidate's stats + the user's stated preferences to Claude, ask for a
 - This validates whether the scoring logic *feels* right before spending LLM budget on explanations —
   **validated**: tested each soft-scoring axis independently and combined (story/gameplay ratio, popularity,
   length, genre+platform hard filters together) against the real 415-game catalog; results tracked distance
-  from target sensibly with no WEIGHTS tuning needed. `similar_to_game_id` is wired on the backend but has no
-  frontend UI yet (needs a game-search/picker, not just a number field) - left for a later pass.
+  from target sensibly. `similar_to_game_id` is wired on the backend but has no frontend UI yet (needs a
+  game-search/picker, not just a number field) - left for a later pass.
+  - **Popularity scoring turned out to be broken** on closer testing after Phase 3 shipped - see Phase 3.5.
+
+**Phase 3.5 — Cleanup: custom categories + popularity fix** (before Phase 4, not a numbered plan phase)
+- **Custom categories added**: IGDB has no genre for Horror, Roguelike, Roguelite, Soulslike, Metroidvania,
+  CRPG, or Immersive Sim - added a `custom_categories` column, classified via the same offline/cached LLM
+  enrichment job (not a new pipeline), against a closed taxonomy so Claude can't invent ungoverned tags.
+  Filtered exactly like a genre (see table above) - the frontend needed zero changes.
+- **Popularity scoring fixed** - it was structurally broken, not just mistuned: (1) the linear
+  `distance/5000` formula was far too coarse for the catalog's actual right-skewed rating_count distribution
+  (p90 is ~1800, max is ~5950), so almost every game scored 0.85-1.0 regardless of target; (2) `review_score`
+  was unconditionally included in every query's scoring at equal-or-higher weight than the axis the user
+  actually asked for, so it silently overrode explicit niche requests. Fixed with a log-normalized 0-100
+  popularity score computed relative to the actual candidate set (not a global constant - "niche" means
+  niche within, say, the RPG subset if genre-filtered) and rebalanced weights (review_score 1.0 → 0.4,
+  popularity 0.5 → 1.0) so quality acts as a tiebreaker instead of a dominant axis. `target_popularity` is
+  now 0 (niche) - 100 (popular), not a raw rating_count.
 
 **Phase 4 — Explanations**
 - Add the per-candidate LLM "why/why not" call on the top N results

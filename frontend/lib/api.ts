@@ -11,6 +11,7 @@ export interface GameOut {
   hltb_main_extra: number | null;
   hltb_completionist: number | null;
   story_gameplay_ratio: number | null;
+  custom_categories: string[];
 }
 
 export interface RecommendationResult {
@@ -45,6 +46,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // Genre/platform values actually present in the synced catalog - drives the
 // filter form's options so they never drift from real data (mobile platforms
 // are omitted server-side since they're always excluded from results).
+// `genres` includes both IGDB genres and our own custom categories (Horror,
+// Roguelike, ...) as one combined list - no distinction needed here.
 export async function getFacets(): Promise<Facets> {
   const res = await fetch(`${API_URL}/games/facets`);
 

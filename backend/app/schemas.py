@@ -16,6 +16,7 @@ class GameOut(BaseModel):
     hltb_main_extra: float | None
     hltb_completionist: float | None
     story_gameplay_ratio: float | None
+    custom_categories: list[str]
 
 
 class HardFilters(BaseModel):
@@ -25,6 +26,9 @@ class HardFilters(BaseModel):
     configurable, see services/scoring.py apply_hard_filters.
     """
 
+    # Matched against IGDB genres AND our own LLM-classified custom_categories
+    # (Horror, Roguelike, ...) - the caller doesn't distinguish between them,
+    # see services/scoring.py apply_hard_filters.
     include_genres: list[str] = []
     exclude_genres: list[str] = []
     platforms: list[str] = []
@@ -39,7 +43,9 @@ class SoftPreferences(BaseModel):
 
     target_length_hours: float | None = None
     target_story_gameplay_ratio: float | None = None  # 0 (pure gameplay) - 100 (pure story)
-    target_popularity: float | None = None  # rating_count target, "nichety" if low
+    # 0 (most niche in the current candidate set) - 100 (most popular). Not a
+    # raw rating_count - see services/scoring.py _normalize_popularity.
+    target_popularity: float | None = None
     similar_to_game_id: int | None = None
 
 
@@ -63,6 +69,8 @@ class RecommendationResponse(BaseModel):
 class FacetsOut(BaseModel):
     """Distinct genre/platform values actually present in the synced catalog -
     used to populate filter UI options so they never drift from real data.
+    `genres` is a union of IGDB genres and our own custom_categories (Horror,
+    Roguelike, ...) - the frontend renders one combined list, no distinction.
     Mobile platforms are omitted since they're always excluded server-side
     (see services/scoring.py MOBILE_PLATFORMS) and would be a dead-end filter.
     """
