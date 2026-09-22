@@ -51,6 +51,39 @@ class Game(Base):
     # distinguish "IGDB genre" from "our own classification".
     custom_categories: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
 
+    # Enrichment v3 (see llm_enrichment.py) - richer per-game analysis for
+    # Phase 4 explanations and future scoring axes. Structured/numeric fields
+    # (pacing_score, mechanical_execution_focus) are designed to plug into
+    # services/scoring.py as new soft-scoring axes later, the same way
+    # story_gameplay_ratio already does - not wired in yet, that's a
+    # separate follow-up. The rest are free text/lists for explanations
+    # only, not scoring inputs. None of this is difficulty or content
+    # warnings - both stay out of scope, see mvp-plan.md section 1.
+    pacing_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0=slow/methodical, 100=fast/frenetic
+    # 0=cerebral/strategic/narrative-driven, 100=reflex/execution-driven.
+    # NOT a difficulty rating - measures what kind of skill matters, not how
+    # hard the game is (a game can be highly execution-focused and easy, or
+    # narrative-driven and punishing).
+    mechanical_execution_focus: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    core_loop: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tone_atmosphere: Mapped[str | None] = mapped_column(Text, nullable=True)
+    narrative_style: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Maps directly onto RecommendationResult.why_recommended / why_not once
+    # Phase 4 wires llm_explanations.py in - these are the per-game halves
+    # of that explanation, pre-computed offline instead of live per query.
+    player_fit: Mapped[str | None] = mapped_column(Text, nullable=True)
+    player_fit_mismatch: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    standout_strengths: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    # Design/gameplay criticism only (e.g. "combat gets repetitive") - not a
+    # content-warning field, that concept stays excluded, see mvp-plan.md.
+    common_complaints: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    # Free-text titles, deliberately NOT a foreign key to games.id - keeps
+    # this enrichment pass self-contained rather than depending on whether
+    # the comparable game happens to be in our catalog yet.
+    comparable_games: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     enrichment_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 

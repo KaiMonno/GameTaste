@@ -26,7 +26,12 @@ def _extract_names(items: list[dict] | None) -> list[str]:
     return [item["name"] for item in (items or [])]
 
 
-async def _upsert_page(session, games_page: list[dict]) -> None:
+async def upsert_games(session, games_page: list[dict]) -> None:
+    """Upsert a page of raw IGDB game dicts (as returned by IGDBClient) into
+    `games`. Public (not `_`-prefixed) since scripts/enrich_games.py's
+    --titles-file flow reuses this too, for the same upsert shape when
+    pulling specific titles rather than bulk pages - see that script.
+    """
     if not games_page:
         return
 
@@ -63,7 +68,7 @@ async def sync(pages: int) -> None:
             if not games_page:
                 logger.info("No more games at offset %d, stopping.", offset)
                 break
-            await _upsert_page(session, games_page)
+            await upsert_games(session, games_page)
             logger.info("Synced %d games (offset %d)", len(games_page), offset)
 
 

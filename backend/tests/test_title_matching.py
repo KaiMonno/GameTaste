@@ -1,15 +1,14 @@
-"""Tests for the Backloggd Top 100 title-matching algorithm
-(scripts/match_backloggd_top100.py classify_match/find_best_matches).
+"""Tests for the shared fuzzy title-matching logic (services/title_matching.py)
+- used by both scripts/match_backloggd_top100.py and the --titles-file
+resolution flow in scripts/enrich_games.py.
 
-IMPORTANT: these use synthetic, made-up candidate pools - NOT a real fetch
-of Backloggd's actual Top 100 (which this project cannot currently fetch
-automatically, see that script's module docstring). This tests that the
-*matching logic* behaves correctly (exact match, near-fuzzy match, ambiguous
-multi-candidate case flagged rather than guessed, no-match case) - it does
-not and cannot test against real Backloggd data until that data is available.
+IMPORTANT: these use synthetic, made-up candidate pools, not real fetched
+data from either Backloggd or IGDB. This tests that the *matching logic*
+behaves correctly (exact match, near-fuzzy match, ambiguous multi-candidate
+case flagged rather than guessed, no-match case).
 """
 
-from app.scripts.match_backloggd_top100 import MIN_MATCH_SCORE, classify_match
+from app.services.title_matching import MIN_MATCH_SCORE, classify_match
 from tests.conftest import make_game
 
 
@@ -51,6 +50,33 @@ def test_long_suffix_difference_is_unmatched_not_a_bad_guess():
     assert status == "unmatched"
     assert game is None
     assert confidence is not None and confidence < MIN_MATCH_SCORE
+
+
+def test_sequel_is_not_matched_to_its_predecessor():
+    """Real bug found while running a titles-file enrichment: "Slay the
+    Spire 2" fuzzy-matched to the existing "Slay the Spire" row at ~93
+    score, with nothing else in the pool close enough to trip the
+    ambiguity-margin check (only one of the two titles existed to compare
+    against). A sequel must never be silently matched to its predecessor
+    just because no better candidate exists yet.
+    """
+    candidates = [make_game(id=1, name="Slay the Spire")]
+    game, status, confidence = classify_match("Slay the Spire 2", candidates)
+    assert status == "unmatched"
+    assert game is None
+
+
+def test_numeral_notation_difference_still_matches():
+    """The other side of the fix above: "Baldur's Gate 3" vs "Baldur's Gate
+    III" is the SAME game in different numeral notation (3 == III) and must
+    still match confidently - the sequel-number guard should only block a
+    match when the trailing numbers genuinely differ, not whenever a number
+    is present at all.
+    """
+    candidates = [make_game(id=1, name="Baldur's Gate III"), make_game(id=2, name="Stardew Valley")]
+    game, status, confidence = classify_match("Baldur's Gate 3", candidates)
+    assert status == "matched"
+    assert game.id == 1
 
 
 def test_ambiguous_match_is_flagged_not_guessed():

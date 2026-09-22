@@ -59,77 +59,16 @@ import json
 import logging
 from pathlib import Path
 
-from rapidfuzz import fuzz
-
 from app.db import async_session_factory
-from app.models import BackloggdTop100, Game
+from app.models import BackloggdTop100
 from app.schemas import HardFilters
 from app.services.scoring import apply_hard_filters
+from app.services.title_matching import classify_match
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 DEFAULT_INPUT_PATH = Path(__file__).parent / "data" / "backloggd_top_100.json"
-
-# A title is only accepted as a confident match if its best candidate scores
-# at least this well...
-MIN_MATCH_SCORE = 80
-# ...AND beats the next-best candidate by at least this much. Below this
-# margin the two candidates are too close to tell apart automatically (e.g.
-# a base game vs. its own remaster both scoring ~90) - flagged "ambiguous"
-# rather than silently picking one, per the task's explicit requirement.
-MIN_AMBIGUITY_MARGIN = 5
-
-
-def find_best_matches(title: str, candidates: list[Game]) -> list[tuple[Game, float]]:
-    """All candidates scored against `title` via rapidfuzz token_sort_ratio
-    (same approach as services/hltb_client.py's title matching), best first.
-    """
-    scored = [(game, fuzz.token_sort_ratio(title, game.name)) for game in candidates]
-    scored.sort(key=lambda pair: pair[1], reverse=True)
-    return scored
-
-
-def classify_match(title: str, candidates: list[Game]) -> tuple[Game | None, str, float | None]:
-    """Returns (matched_game_or_None, status, confidence). status is one of
-    "matched", "ambiguous", "unmatched" - see MIN_MATCH_SCORE/MIN_AMBIGUITY_MARGIN.
-
-    A literal exact-string match (case-insensitive) short-circuits the
-    fuzzy-margin ambiguity check below - discovered to matter in practice:
-    "Final Fantasy VII" vs "Final Fantasy VIII" scores ~97 via
-    token_sort_ratio purely because the strings share nearly every token,
-    even though they're unambiguously different games. Without this,
-    several titles with exactly one true exact-name match in the catalog
-    (Final Fantasy VII/IX/X, Dark Souls III, The Last of Us Part II, ...)
-    were being needlessly flagged ambiguous by a same-franchise sibling's
-    coincidentally-close fuzzy score. An exact string match is the strongest
-    signal this matcher can get, stronger than "how much closer is the
-    fuzzy runner-up" - so it's trusted outright, UNLESS more than one
-    candidate exactly matches the title (a true name collision, e.g. two
-    different IGDB rows both literally named "Shadow of the Colossus" for
-    the PS2 original and PS4 remake) - that case still must be flagged.
-    """
-    normalized_title = title.strip().casefold()
-    exact_matches = [g for g in candidates if g.name.strip().casefold() == normalized_title]
-    if len(exact_matches) == 1:
-        return exact_matches[0], "matched", 100.0
-    if len(exact_matches) > 1:
-        return None, "ambiguous", 100.0
-
-    scored = find_best_matches(title, candidates)
-    if not scored:
-        return None, "unmatched", None
-
-    best_game, best_score = scored[0]
-    if best_score < MIN_MATCH_SCORE:
-        return None, "unmatched", best_score
-
-    if len(scored) > 1:
-        _, second_score = scored[1]
-        if best_score - second_score < MIN_AMBIGUITY_MARGIN:
-            return None, "ambiguous", best_score
-
-    return best_game, "matched", best_score
 
 
 async def run(input_path: Path) -> None:

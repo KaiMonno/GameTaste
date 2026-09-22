@@ -83,3 +83,30 @@ class IGDBClient:
             )
             resp.raise_for_status()
             return resp.json()
+
+    async def search_games(self, title: str, limit: int = 10) -> list[dict]:
+        """Look up a specific title by name (IGDB's `search` apicalypse
+        operator - fuzzy/relevance-ranked on IGDB's side), for pulling
+        specific games into `games` on demand rather than bulk pagination.
+        Deliberately no `where rating_count != null` filter here (unlike
+        fetch_games) - a title-specific lookup should still find something
+        like an early-access game with few/no ratings yet, not silently
+        drop it. Caller is responsible for fuzzy-matching/validating the
+        results against the requested title (see services/title_matching.py)
+        rather than trusting IGDB's top hit blindly.
+        """
+        # Note: `search` and `sort` can't be combined in the same apicalypse
+        # query - IGDB orders search results by its own relevance score.
+        query = f"""
+            search "{title}";
+            fields {GAME_FIELDS};
+            limit {limit};
+        """
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{IGDB_BASE_URL}/games",
+                headers=await self._headers(),
+                content=query,
+            )
+            resp.raise_for_status()
+            return resp.json()
