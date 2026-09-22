@@ -106,6 +106,39 @@ Feed each candidate's stats + the user's stated preferences to Claude, ask for a
   niche within, say, the RPG subset if genre-filtered) and rebalanced weights (review_score 1.0 → 0.4,
   popularity 0.5 → 1.0) so quality acts as a tiebreaker instead of a dominant axis. `target_popularity` is
   now 0 (niche) - 100 (popular), not a raw rating_count.
+  - **Superseded by Phase 3.6 below** - IGDB popularity as a *user-facing preference* (this whole
+    `target_popularity` mechanism) was removed entirely, not just re-fixed again. The log-normalization
+    machinery this fix built was correct and got reused, just repurposed for something different.
+
+**Phase 3.6 — Remove IGDB popularity as a preference; add discovery bias; Backloggd Top 100 benchmark**
+
+Product decision: IGDB `rating_count`-based "popularity" is not a good proxy for what this project actually
+wants, which is *discovery* for enthusiast players - a game being extremely popular shouldn't inherently make
+it a better recommendation, and the reverse (deliberately down-ranking popular games) isn't the goal either.
+
+- **`target_popularity` removed entirely** - no more slider, no more soft preference, no more "popularity"
+  scoring axis in `WEIGHTS`. Not replaced with another popularity-flavored axis.
+- **Discovery bias added instead** - a small, always-on nudge (not a user preference) that can tip a close
+  call toward the less-obvious game but is capped (`DISCOVERY_BIAS_WEIGHT = 6.0` match_score points) so it
+  can never overturn a genuinely better match (a 25-point preference-match gap, e.g. 95 vs 70, can never be
+  closed by discovery alone). See `services/scoring.py`'s module docstring for the full reasoning, including
+  why `igdb_rating_count` (log-normalized relative to the candidate set - the same machinery from the Phase
+  3.5 fix, repurposed) was chosen over the other signals considered (IGDB's real Popularity Primitives API
+  was never integrated by this project; release date isn't synced at all; a curated "mainstream set" is
+  exactly what the Backloggd Top 100 benchmark below must *not* be used for).
+- **Backloggd Top 100 benchmark/reference table added** (`backloggd_top_100`, see `models.py`) - a small,
+  recognizable set of highly-regarded games for evaluating recommendation quality by hand, explicitly NOT a
+  scoring input and NOT the primary catalog. `scripts/match_backloggd_top100.py` fuzzy-matches titles to
+  `games` rows and flags ambiguous matches rather than guessing.
+  - **Known limitation**: this script does not scrape Backloggd itself. `backloggd.com/games/top-100/` is
+    protected by a JS bot-challenge (Bunny Shield) that blocks plain HTTP fetches (confirmed: 403 from both
+    `curl` and this project's web-fetch tooling; no Wayback Machine snapshot exists either). The matching
+    pipeline is fully built and tested against synthetic data - it just needs the actual 100 titles supplied
+    via a JSON file (see `scripts/data/README.md`) until real automated fetching is solved, which would need
+    a real headless browser (a meaningfully heavier dependency, out of scope for this task).
+- **Test suite added** (`backend/tests/`, previously nonexistent) - `pytest` + `pytest-asyncio`, unit tests
+  for the scoring/discovery-bias math and the Backloggd matching algorithm, integration tests against the
+  real dev catalog. See test docstrings for what each demonstrates, not just "does it run".
 
 **Phase 4 — Explanations**
 - Add the per-candidate LLM "why/why not" call on the top N results

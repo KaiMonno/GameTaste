@@ -39,13 +39,15 @@ class HardFilters(BaseModel):
 class SoftPreferences(BaseModel):
     """Continuous/ordinal targets used to rank the candidates that survive
     the hard filters. Any field left as None is excluded from scoring.
+
+    No target_popularity field - IGDB popularity is no longer a user-facing
+    preference (Phase 3.6). A small, always-on "discovery bias" toward
+    less-obvious games is applied automatically to every request instead;
+    see services/scoring.py DISCOVERY_BIAS_WEIGHT.
     """
 
     target_length_hours: float | None = None
     target_story_gameplay_ratio: float | None = None  # 0 (pure gameplay) - 100 (pure story)
-    # 0 (most niche in the current candidate set) - 100 (most popular). Not a
-    # raw rating_count - see services/scoring.py _normalize_popularity.
-    target_popularity: float | None = None
     similar_to_game_id: int | None = None
 
 

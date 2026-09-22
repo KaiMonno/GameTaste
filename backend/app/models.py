@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Integer, String, Text, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -62,3 +62,28 @@ class Game(Base):
     # embedding (pgvector) is a v2 addition once similarity search is needed -
     # see game-recommender-architecture.md section 6. Add via a new migration
     # rather than guessing the column shape now.
+
+
+class BackloggdTop100(Base):
+    """Small benchmark/reference dataset for evaluating recommendation
+    quality against a known set of highly-regarded games - NOT the primary
+    catalog and NOT a scoring input (see services/scoring.py's module
+    docstring: the point is checking whether the engine can ALSO surface
+    strong games outside this list, not learning "highly rated = Top 100").
+    Populated by scripts/match_backloggd_top100.py.
+    """
+
+    __tablename__ = "backloggd_top_100"
+
+    rank: Mapped[int] = mapped_column(Integer, primary_key=True)  # 1-100, Backloggd's own rank
+    backloggd_title: Mapped[str] = mapped_column(String, nullable=False)
+
+    # Null when no confident match was found, or the best match was
+    # ambiguous (see match_status) - never silently guess a wrong game.
+    game_id: Mapped[int | None] = mapped_column(ForeignKey("games.id"), nullable=True)
+
+    # "matched" | "ambiguous" | "unmatched" - see scripts/match_backloggd_top100.py
+    match_status: Mapped[str] = mapped_column(String, nullable=False)
+    match_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)  # rapidfuzz score, 0-100
+
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

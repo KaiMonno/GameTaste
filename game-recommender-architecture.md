@@ -80,7 +80,7 @@ You could collapse this to a single-language stack (Node/TypeScript everywhere, 
 
 **Online (user-facing, request/response):**
 1. User submits filters → FastAPI applies **hard filters** in SQL (genre include/exclude, platform, no-mobile and no-DLC/expansions always on, multiplayer requirement).
-2. FastAPI computes **weighted soft-match score** in-process (length distance, review score, popularity/nichety distance, story/gameplay distance, similarity score) → ranks candidates.
+2. FastAPI computes **weighted soft-match score** in-process (length distance, review score, story/gameplay distance, similarity score), then adds a small always-on **discovery bias** on top (not a user preference, not part of the weighted average - see `services/scoring.py`'s module docstring and mvp-plan.md Phase 3.6) → ranks candidates. IGDB popularity/rating_count is no longer a scoring *preference* as of Phase 3.6 - it's only used, log-normalized, to compute that discovery bias.
 3. Top ~15–20 candidates sent to Claude in a single batched call (not 15 separate calls) asking for a "why you'll like it / why you might not" per game, returned as structured JSON.
 4. Response merged with the numeric % match (computed by the formula, not the LLM — keeps the ranking auditable and consistent) and returned to frontend.
 
@@ -95,13 +95,16 @@ games
   id (igdb_id, pk)
   name, summary
   genres[], platforms[], game_modes[]      -- from IGDB
-  igdb_rating, igdb_rating_count           -- score + popularity proxy
+  igdb_rating, igdb_rating_count           -- review score + discovery-bias input (not a "popularity preference" - see Phase 3.6)
   similar_game_ids[]                       -- from IGDB
   igdb_category                            -- from IGDB (main_game/dlc/expansion/etc - excludes DLC)
   hltb_main, hltb_main_extra, hltb_completionist
   story_gameplay_ratio                     -- LLM-enriched
   embedding (vector)                       -- v2
   enriched_at, enrichment_version
+
+backloggd_top_100                          -- Phase 3.6, benchmark/reference only, not a scoring input
+  rank (pk), backloggd_title, game_id (fk -> games, nullable), match_status, match_confidence, fetched_at
 
 users                                      -- phase 5+
   id, auth_provider_id, created_at

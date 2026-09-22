@@ -12,3 +12,10 @@ howlongtobeatpy==1.0.23
 anthropic==0.34.2
 redis==5.0.8
 python-dotenv==1.0.1
+
+# Test-only deps. pytest-asyncio is needed for the integration tests in
+# tests/test_recommendations_integration.py, which exercise the real dev DB
+# (async SQLAlchemy session) rather than mocking it - see that file's
+# docstring for why.
+pytest==8.3.3
+pytest-asyncio==0.24.0

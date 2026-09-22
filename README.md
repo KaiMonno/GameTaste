@@ -61,6 +61,11 @@ frontend/   Next.js filter form + results list
    > `open "/Applications/Python 3.12/Install Certificates.command"` (adjust the version in
    > the path to whatever you installed). This isn't needed for Homebrew-installed Python.
 
+   **Tests:** `cd backend && pytest` runs everything under `tests/`. Most tests are pure unit
+   tests (no DB needed); `tests/test_recommendations_integration.py` exercises the real
+   scoring engine against the dev Postgres catalog and skips itself gracefully if that isn't
+   reachable/seeded rather than failing the whole run.
+
 4. **Frontend:**
    ```
    cd frontend

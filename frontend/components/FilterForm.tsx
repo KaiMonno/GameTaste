@@ -55,7 +55,6 @@ export default function FilterForm({ onSubmit, loading }: Props) {
   const [minReviewScore, setMinReviewScore] = useState<string>("");
   const [targetLengthHours, setTargetLengthHours] = useState<string>("");
   const [targetStoryGameplayRatio, setTargetStoryGameplayRatio] = useState<string>("");
-  const [targetPopularity, setTargetPopularity] = useState<string>("");
 
   useEffect(() => {
     getFacets()
@@ -82,7 +81,6 @@ export default function FilterForm({ onSubmit, loading }: Props) {
     const softPreferences: SoftPreferences = {
       target_length_hours: targetLengthHours ? Number(targetLengthHours) : null,
       target_story_gameplay_ratio: targetStoryGameplayRatio ? Number(targetStoryGameplayRatio) : null,
-      target_popularity: targetPopularity ? Number(targetPopularity) : null,
       // "Similar to a specific game" needs a game-search UI to pick a
       // reference game - not built yet, left for a later pass.
       similar_to_game_id: null,
@@ -118,21 +116,9 @@ export default function FilterForm({ onSubmit, loading }: Props) {
         />
       </div>
 
-      <div>
-        <label className="block text-sm font-medium">Popularity target (0-100)</label>
-        <p className="text-xs text-gray-500">
-          0 = most niche/hidden-gem, 100 = most mainstream. Relative to the games matching your other filters.
-        </p>
-        <input
-          type="number"
-          min={0}
-          max={100}
-          value={targetPopularity}
-          onChange={(e) => setTargetPopularity(e.target.value)}
-          className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-          placeholder="e.g. 15 for a hidden gem, 85 for mainstream"
-        />
-      </div>
+      {/* No popularity slider - the engine now applies a small, always-on
+          discovery bias toward less-obvious games automatically, rather
+          than letting the user dial popularity up or down. */}
 
       <div>
         <label className="block text-sm font-medium">Minimum review score (0-100)</label>

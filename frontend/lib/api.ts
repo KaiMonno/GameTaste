@@ -32,7 +32,9 @@ export interface HardFilters {
 export interface SoftPreferences {
   target_length_hours: number | null;
   target_story_gameplay_ratio: number | null;
-  target_popularity: number | null;
+  // No target_popularity - IGDB popularity is no longer a user preference.
+  // A small, always-on discovery bias toward less-obvious games applies
+  // automatically server-side instead (see backend/app/services/scoring.py).
   similar_to_game_id: number | null;
 }
 

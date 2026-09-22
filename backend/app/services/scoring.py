@@ -3,6 +3,15 @@
 Per game-recommender-mvp-plan.md section 3. The % match is purely formula-driven
 for MVP (not LLM-judged) so it stays auditable and consistent - see "Open Risks" #3
 in that doc.
+
+Phase 3.6: IGDB-popularity-as-a-preference was removed entirely (no more
+target_popularity soft preference, no more "popularity" scoring axis) - see
+mvp-plan.md Phase 3.6 for the full reasoning. It's replaced by a small,
+always-on "discovery bias" (DISCOVERY_BIAS_WEIGHT below) that is NOT a user
+preference and NOT part of the weighted preference-match formula - it's a
+separate, deliberately bounded nudge applied after the match score is
+computed, so it can tip a close call toward the less-obvious game but can
+never outweigh a genuinely better match. See _discovery_boost.
 """
 
 import math
@@ -14,29 +23,56 @@ from app.schemas import HardFilters, SoftPreferences
 
 # Weights for each soft-scoring axis. Tune once real recommendation quality
 # feedback comes in - see mvp-plan.md phase 3 ("validates whether the scoring
-# logic *feels* right").
+# logic *feels* right"). This is *preference match* only - it has nothing to
+# do with discovery/niche-ness, see DISCOVERY_BIAS_WEIGHT below for that.
 #
-# review_score is intentionally the lowest weight, not the original 1.0 -
-# see the Phase 3.5 popularity fix. It's the only axis included unconditionally
-# (every query gets it, whether or not the user asked for it), so at an equal
-# or higher weight than an explicitly-requested axis it could silently outrank
-# that axis - confirmed concretely with target_popularity: a request for the
-# most niche game in the catalog (Shadow of the Colossus, rating_count=375)
-# still lost to Witcher 3 GOTY (rating_count=572) purely because Witcher 3's
-# quality score (97.6) was higher, even though it's less niche either way.
-# review_score now acts as a light tiebreaker, not a co-equal axis.
+# review_score is intentionally a low weight, not 1.0 - see the Phase 3.5
+# popularity fix. It's the only axis included unconditionally (every query
+# gets it, whether or not the user asked for it), so at an equal or higher
+# weight than an explicitly-requested axis it could silently outrank that
+# axis - originally confirmed with the now-removed target_popularity axis:
+# a request for the most niche game in the catalog (Shadow of the Colossus,
+# rating_count=375) still lost to Witcher 3 GOTY (rating_count=572) purely
+# because Witcher 3's quality score (97.6) was higher. review_score acts as
+# a light tiebreaker, not a co-equal axis.
 WEIGHTS = {
     "length": 1.0,
     "review_score": 0.4,
-    "popularity": 1.0,
     "story_gameplay": 1.0,
     "similarity": 1.5,
 }
 
-# Bounds used to log-normalize rating_count into a 0-100 popularity score when
-# a candidate set is too small/uniform to derive relative bounds from itself
-# (see _popularity_log_bounds). Wide enough to cover far outside today's
-# catalog range (375-5949) so it stays sane as the catalog grows.
+# Discovery bias: see the module docstring. This is the ONLY place
+# igdb_rating_count still influences ranking - not as a user-settable
+# preference, but as a small universal nudge toward less-obvious games.
+#
+# Why rating_count, chosen over the other signals suggested when this was
+# designed (see mvp-plan.md Phase 3.6): IGDB's actual "Popularity Primitives"
+# API (want-to-play/wishlist/visit counts) was never synced by this project
+# and adding it is new scope; release date isn't synced either (no
+# first_release_date column exists) and adding it means a new IGDB field +
+# migration + re-sync; a curated "mainstream set" is explicitly what the
+# Backloggd Top 100 benchmark must NOT be used for (see scripts/match_backloggd_top100.py).
+# rating_count was already being fetched, already log-normalized relative to
+# the candidate set from the (now-removed) popularity feature, and is the
+# most directly available, explainable proxy for "how many people have
+# logged an opinion on this" - not a proxy for quality (igdb_rating is a
+# completely separate field/axis, see review_score above).
+#
+# DISCOVERY_BIAS_WEIGHT is the max match_score points a game can gain purely
+# for being the single most niche candidate in its result set (0 points for
+# the most mainstream candidate, scaling linearly in between - see
+# _discovery_boost). Deliberately small relative to the 0-100 match_score
+# range: a game that's a clearly worse preference match (e.g. 70 vs 95, a
+# 25-point gap) can never close that gap through niche-ness alone, but two
+# close matches (e.g. both ~90) can be tipped toward the more niche one.
+DISCOVERY_BIAS_WEIGHT = 6.0
+
+# Bounds used to log-normalize rating_count into a 0-100 "obviousness" score
+# when a candidate set is too small/uniform to derive relative bounds from
+# itself (see _discovery_log_bounds). Wide enough to cover far outside
+# today's catalog range (375-5949) so it stays sane as the catalog grows
+# toward the ~190k-game target (see mvp-plan.md section on catalog scale).
 FALLBACK_POPULARITY_LOG_MIN = math.log(1)
 FALLBACK_POPULARITY_LOG_MAX = math.log(10_000)
 
@@ -104,10 +140,10 @@ def _distance_score(value: float | None, target: float | None, scale: float) -> 
     return max(0.0, 1.0 - distance / scale)
 
 
-def _popularity_log_bounds(games: list[Game]) -> tuple[float, float]:
+def _discovery_log_bounds(games: list[Game]) -> tuple[float, float]:
     """Log-space (min, max) of rating_count across a candidate set, used to
-    normalize popularity to 0-100 *relative to what's actually being ranked*
-    - e.g. "niche" among an RPG-filtered candidate set means niche relative to
+    estimate relative "obviousness" *within what's actually being ranked*
+    - e.g. niche among an RPG-filtered candidate set means niche relative to
     other RPGs, not to the whole catalog. A plain linear 0-rating_count scale
     doesn't work here: the distribution is heavily right-skewed (catalog p90
     is ~1800 but the max is ~5950), so log-space spreads it out evenly instead
@@ -115,7 +151,7 @@ def _popularity_log_bounds(games: list[Game]) -> tuple[float, float]:
 
     Falls back to a wide fixed range when the candidate set is too small or
     too uniform to derive meaningful relative bounds (e.g. a single game, or
-    every candidate having identical rating_count).
+    every candidate having identical rating_count) - see DISCOVERY_BIAS_WEIGHT.
     """
     counts = [g.igdb_rating_count for g in games if g.igdb_rating_count and g.igdb_rating_count > 0]
     if len(counts) < 2:
@@ -128,34 +164,48 @@ def _popularity_log_bounds(games: list[Game]) -> tuple[float, float]:
     return lo, hi
 
 
-def _normalize_popularity(rating_count: float | None, log_bounds: tuple[float, float]) -> float | None:
-    """rating_count -> 0 (most niche in this candidate set) .. 100 (most
-    popular). None propagates so _distance_score's "missing data" handling
-    still applies rather than treating an unrated game as maximally niche.
+def _obviousness_score(rating_count: float | None, log_bounds: tuple[float, float]) -> float | None:
+    """rating_count -> 0 (least-known game in this candidate set) .. 100
+    (best-known). None propagates rather than treating a game with unknown
+    rating_count as automatically maximally niche - see _discovery_boost.
+    This is a proxy for "how many people have logged an opinion", not for
+    quality - igdb_rating/review_score is a completely separate signal.
     """
     if rating_count is None or rating_count <= 0:
         return None
     log_min, log_max = log_bounds
     if log_max - log_min < 1e-6:
-        return 50.0  # every candidate has ~equal popularity - no useful signal either way
+        return 50.0  # every candidate is ~equally (un)known - no useful signal either way
     normalized = (math.log(rating_count) - log_min) / (log_max - log_min) * 100
     return max(0.0, min(100.0, normalized))
 
 
+def _discovery_boost(game: Game, log_bounds: tuple[float, float]) -> float:
+    """0 .. DISCOVERY_BIAS_WEIGHT match_score points, higher for less-obvious
+    games. A game with unknown rating_count gets 0 boost - missing data
+    should never manufacture a discovery advantage.
+    """
+    obviousness = _obviousness_score(game.igdb_rating_count, log_bounds)
+    if obviousness is None:
+        return 0.0
+    niche_fraction = (100.0 - obviousness) / 100.0
+    return niche_fraction * DISCOVERY_BIAS_WEIGHT
+
+
 def score_candidate(
-    game: Game, preferences: SoftPreferences, popularity_log_bounds: tuple[float, float] | None = None
+    game: Game, preferences: SoftPreferences, discovery_log_bounds: tuple[float, float] | None = None
 ) -> float:
-    """Weighted soft-match score, normalized to 0-100."""
+    """0-100 score: a weighted preference-match sub-score, plus a small,
+    separately-computed discovery bias added on top (see DISCOVERY_BIAS_WEIGHT
+    and the module docstring for why these are kept as two distinct steps
+    rather than one axis blended into the weighted average below).
+    """
     axis_scores: dict[str, float] = {}
 
     if preferences.target_length_hours is not None:
         axis_scores["length"] = _distance_score(game.hltb_main, preferences.target_length_hours, scale=20)
 
     axis_scores["review_score"] = (game.igdb_rating or 50) / 100
-
-    if preferences.target_popularity is not None:
-        popularity = _normalize_popularity(game.igdb_rating_count, popularity_log_bounds or (0.0, 0.0))
-        axis_scores["popularity"] = _distance_score(popularity, preferences.target_popularity, scale=50)
 
     if preferences.target_story_gameplay_ratio is not None:
         axis_scores["story_gameplay"] = _distance_score(
@@ -165,19 +215,27 @@ def score_candidate(
     if preferences.similar_to_game_id is not None:
         axis_scores["similarity"] = 1.0 if preferences.similar_to_game_id in game.similar_game_ids else 0.0
 
-    if not axis_scores:
-        return round((game.igdb_rating or 50), 2)
+    if axis_scores:
+        weighted_sum = sum(axis_scores[axis] * WEIGHTS[axis] for axis in axis_scores)
+        total_weight = sum(WEIGHTS[axis] for axis in axis_scores)
+        match_score = (weighted_sum / total_weight) * 100
+    else:
+        match_score = game.igdb_rating or 50
 
-    weighted_sum = sum(axis_scores[axis] * WEIGHTS[axis] for axis in axis_scores)
-    total_weight = sum(WEIGHTS[axis] for axis in axis_scores)
-    return round((weighted_sum / total_weight) * 100, 2)
+    discovery_boost = _discovery_boost(game, discovery_log_bounds) if discovery_log_bounds else 0.0
+    # Clamped, not re-normalized, so DISCOVERY_BIAS_WEIGHT is a real, fixed
+    # cap on influence regardless of how the rest of the formula is tuned -
+    # a match_score of 100 plus any boost still reads as 100, never higher.
+    return round(min(100.0, match_score + discovery_boost), 2)
 
 
 def rank_candidates(games: list[Game], preferences: SoftPreferences, limit: int) -> list[tuple[Game, float]]:
-    # Computed once per request from the actual candidate set (post hard-filter),
-    # not the whole catalog - see _popularity_log_bounds.
-    popularity_log_bounds = _popularity_log_bounds(games) if preferences.target_popularity is not None else None
+    # Discovery bias always applies (it's not a user preference - see the
+    # module docstring) - computed once per request from the actual
+    # candidate set (post hard-filter), not the whole catalog, so "niche"
+    # means niche among what's actually being ranked.
+    discovery_log_bounds = _discovery_log_bounds(games)
 
-    scored = [(game, score_candidate(game, preferences, popularity_log_bounds)) for game in games]
+    scored = [(game, score_candidate(game, preferences, discovery_log_bounds)) for game in games]
     scored.sort(key=lambda pair: pair[1], reverse=True)
     return scored[:limit]
