@@ -76,10 +76,23 @@ DISCOVERY_BIAS_WEIGHT = 6.0
 FALLBACK_POPULARITY_LOG_MIN = math.log(1)
 FALLBACK_POPULARITY_LOG_MAX = math.log(10_000)
 
-# Platforms always excluded, not user-configurable. Beyond the two obvious
-# ones, IGDB's platform list also includes older phone-era platforms that are
-# just as much "mobile" - left out of a first pass, added after noticing them
-# still showing up in games.platforms / the facets filter list.
+# Platforms that make a game "mobile" for exclusion purposes, not user-
+# configurable. Beyond the two obvious ones, IGDB's platform list also
+# includes older phone-era platforms that are just as much "mobile" - left
+# out of a first pass, added after noticing them still showing up in
+# games.platforms / the facets filter list.
+#
+# IMPORTANT: a game is only excluded if EVERY platform it has is in this
+# list (see apply_hard_filters) - not if it merely has one of these among
+# several. Originally implemented as "exclude if platforms contains ANY of
+# these", which silently dropped 81 of the catalog's 500 games (Portal,
+# Half-Life 2, Stardew Valley, Hades, GTA: San Andreas, ...) purely for
+# having an incidental mobile port alongside their real PC/console release -
+# discovered while matching the Backloggd Top 100, where it caused several
+# genuinely-catalogued games (Hades among them) to come back "unmatched"
+# because they weren't in the candidate pool at all. Confirmed via the
+# actual data before fixing: only 1 game in the whole catalog is genuinely
+# mobile-only under the corrected definition.
 MOBILE_PLATFORMS = ["Android", "iOS", "Windows Phone", "Windows Mobile", "Legacy Mobile Device", "N-Gage"]
 
 # IGDB `category` values that mean "not a standalone game" - dlc_addon (1) and
@@ -95,8 +108,15 @@ def apply_hard_filters(filters: HardFilters) -> Select:
     """
     query = select(Game)
 
-    for platform in MOBILE_PLATFORMS:
-        query = query.where(~Game.platforms.any(platform))
+    # Exclude only games that are ENTIRELY confined to mobile platforms
+    # (platforms is a subset of MOBILE_PLATFORMS) - a game with a mobile
+    # port alongside its real PC/console release must not be excluded just
+    # for having that port. Games with no platform data at all (empty
+    # array) are kept rather than penalized for missing data, consistent
+    # with how the rest of this module treats missing enrichment.
+    query = query.where(
+        or_(Game.platforms == [], ~Game.platforms.contained_by(MOBILE_PLATFORMS))
+    )
 
     query = query.where(or_(Game.igdb_category.is_(None), Game.igdb_category.not_in(DLC_CATEGORIES)))
 

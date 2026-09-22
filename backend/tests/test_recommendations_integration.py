@@ -135,6 +135,20 @@ async def test_short_length_query_returns_sensible_results(session_factory):
     )
 
 
+async def test_multiplatform_games_with_a_mobile_port_are_not_excluded(session_factory):
+    """Regression for a real bug found while matching the Backloggd Top 100:
+    apply_hard_filters used to exclude a game if it had ANY mobile platform
+    listed, even alongside real PC/console releases - silently dropping 81
+    of the catalog's 500 games (Portal, Half-Life 2, Stardew Valley, Hades,
+    GTA: San Andreas, ...) that merely also have an iOS/Android port. Only a
+    game ENTIRELY confined to mobile platforms should be excluded.
+    """
+    ranked, _ = await _get_ranked(session_factory, HardFilters(), SoftPreferences(), limit=1000)
+    names_in_pool = {g.name for g, _ in ranked}
+    for name in ("Portal", "Half-Life 2", "Hades", "Stardew Valley"):
+        assert name in names_in_pool, f"{name!r} has a real non-mobile release and must not be excluded"
+
+
 async def test_popularity_no_longer_selectable_as_a_soft_preference():
     """SoftPreferences genuinely has no popularity knob - constructing one
     with an unrecognized field is silently dropped by pydantic (not an

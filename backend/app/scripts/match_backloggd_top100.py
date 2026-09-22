@@ -93,7 +93,29 @@ def find_best_matches(title: str, candidates: list[Game]) -> list[tuple[Game, fl
 def classify_match(title: str, candidates: list[Game]) -> tuple[Game | None, str, float | None]:
     """Returns (matched_game_or_None, status, confidence). status is one of
     "matched", "ambiguous", "unmatched" - see MIN_MATCH_SCORE/MIN_AMBIGUITY_MARGIN.
+
+    A literal exact-string match (case-insensitive) short-circuits the
+    fuzzy-margin ambiguity check below - discovered to matter in practice:
+    "Final Fantasy VII" vs "Final Fantasy VIII" scores ~97 via
+    token_sort_ratio purely because the strings share nearly every token,
+    even though they're unambiguously different games. Without this,
+    several titles with exactly one true exact-name match in the catalog
+    (Final Fantasy VII/IX/X, Dark Souls III, The Last of Us Part II, ...)
+    were being needlessly flagged ambiguous by a same-franchise sibling's
+    coincidentally-close fuzzy score. An exact string match is the strongest
+    signal this matcher can get, stronger than "how much closer is the
+    fuzzy runner-up" - so it's trusted outright, UNLESS more than one
+    candidate exactly matches the title (a true name collision, e.g. two
+    different IGDB rows both literally named "Shadow of the Colossus" for
+    the PS2 original and PS4 remake) - that case still must be flagged.
     """
+    normalized_title = title.strip().casefold()
+    exact_matches = [g for g in candidates if g.name.strip().casefold() == normalized_title]
+    if len(exact_matches) == 1:
+        return exact_matches[0], "matched", 100.0
+    if len(exact_matches) > 1:
+        return None, "ambiguous", 100.0
+
     scored = find_best_matches(title, candidates)
     if not scored:
         return None, "unmatched", None

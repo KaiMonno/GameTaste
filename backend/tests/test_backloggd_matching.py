@@ -71,6 +71,40 @@ def test_ambiguous_match_is_flagged_not_guessed():
     assert game is None, "an ambiguous match must not silently return a guessed game"
 
 
+def test_exact_match_beats_a_coincidentally_close_franchise_sibling():
+    """Real bug found matching the actual Backloggd Top 100: "Final Fantasy
+    VII" vs "Final Fantasy VIII" scores ~97 via token_sort_ratio (they share
+    nearly every token), which used to trip the ambiguity-margin check even
+    though there's exactly one literal exact-name match and the "runner-up"
+    is a completely different, unambiguous game. An exact string match must
+    win outright, not get flagged ambiguous by an unrelated sequel's
+    coincidentally close fuzzy score.
+    """
+    candidates = [
+        make_game(id=1, name="Final Fantasy VII"),
+        make_game(id=2, name="Final Fantasy VIII"),
+    ]
+    game, status, confidence = classify_match("Final Fantasy VII", candidates)
+    assert status == "matched"
+    assert game.id == 1
+
+
+def test_true_name_duplicate_is_still_ambiguous():
+    """The other side of the fix above: when *multiple* candidates are
+    literal exact-string matches (a real IGDB duplicate, e.g. an original
+    and its same-named remake both stored as "Shadow of the Colossus"), the
+    exact-match short-circuit must not just pick the first one - still
+    ambiguous.
+    """
+    candidates = [
+        make_game(id=1, name="Shadow of the Colossus"),
+        make_game(id=2, name="Shadow of the Colossus"),
+    ]
+    game, status, confidence = classify_match("Shadow of the Colossus", candidates)
+    assert status == "ambiguous"
+    assert game is None
+
+
 def test_unrelated_title_is_unmatched():
     candidates = [make_game(id=1, name="Elden Ring"), make_game(id=2, name="Stardew Valley")]
     game, status, confidence = classify_match("Some Completely Different Game Title", candidates)
