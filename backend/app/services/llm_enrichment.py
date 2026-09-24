@@ -159,7 +159,26 @@ async def _call_once(client: AsyncAnthropic, user_content: str) -> tuple[dict, d
             f"content_block_types={[getattr(b, 'type', None) for b in response.content]}, usage={usage})"
         )
 
-    return json.loads(text_block.text), usage
+    return json.loads(_strip_markdown_fence(text_block.text)), usage
+
+
+def _strip_markdown_fence(text: str) -> str:
+    """The system prompt says "respond with ONLY a JSON object", but Claude
+    still occasionally wraps the answer in a ```json ... ``` fence anyway
+    (observed reproducibly for at least one real game during enrichment -
+    'Limbo', stop_reason="end_turn", otherwise well-formed JSON inside the
+    fence). json.loads on a string starting with a backtick fails immediately
+    with "Expecting value: line 1 column 1 (char 0)", which is
+    indistinguishable from a genuinely empty response unless you go look -
+    strip the fence before parsing instead of treating this as a retry-and-
+    hope case.
+    """
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = stripped.removeprefix("```json").removeprefix("```")
+        stripped = stripped.removesuffix("```")
+        stripped = stripped.strip()
+    return stripped
 
 
 async def enrich_game(game: Game) -> EnrichmentResult:
