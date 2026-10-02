@@ -18,7 +18,7 @@ import math
 
 from sqlalchemy import Select, or_, select
 
-from app.models import Game
+from app.models import CuratedListGame, Game
 from app.schemas import HardFilters, SoftPreferences
 
 # Weights for each soft-scoring axis. Tune once real recommendation quality
@@ -143,10 +143,23 @@ def apply_hard_filters(filters: HardFilters) -> Select:
     if filters.require_multiplayer:
         query = query.where(Game.game_modes.any("Multiplayer"))
 
-    if filters.min_review_score is not None:
-        query = query.where(Game.igdb_rating >= filters.min_review_score)
-
     return query
+
+
+def restrict_to_curated_list(query: Select) -> Select:
+    """Scope a games query to the hand-curated recommendation set (see
+    models.CuratedListGame / the repo-root `Game List` file) - a game not in
+    this set is never a recommendation candidate, no matter what it scores.
+
+    Deliberately kept separate from apply_hard_filters rather than folded
+    into it: apply_hard_filters is also reused by
+    scripts/match_backloggd_top100.py and scripts/enrich_games.py's
+    --titles-file mode to check filter-exclusion correctness (mobile/DLC/
+    genre/platform) against the FULL games table, independent of which
+    titles happen to be curated right now - those callers must NOT be
+    silently narrowed to the curated set too.
+    """
+    return query.join(CuratedListGame, CuratedListGame.game_id == Game.id)
 
 
 def _distance_score(value: float | None, target: float | None, scale: float) -> float:
@@ -259,3 +272,91 @@ def rank_candidates(games: list[Game], preferences: SoftPreferences, limit: int)
     scored = [(game, score_candidate(game, preferences, discovery_log_bounds)) for game in games]
     scored.sort(key=lambda pair: pair[1], reverse=True)
     return scored[:limit]
+
+
+# How many of the best-matching candidates select_diverse_results is allowed
+# to choose among - generous enough to give real variety to pick from, but
+# small enough that diversity never reaches into mediocre matches just for
+# novelty. Mirrors mvp-plan.md's existing "top ~15-20 candidates" convention
+# used elsewhere in the plan for the same reason (a bounded shortlist, not
+# the whole candidate pool).
+DIVERSITY_SHORTLIST_SIZE = 20
+
+# match_score-equivalent points subtracted from a candidate for having
+# maximal (1.0) genre/category overlap with an already-selected result,
+# scaling down to 0 at no overlap. Large enough to meaningfully space out a
+# small result page, but a genuinely much-better match (e.g. 95 vs 60) still
+# wins - diversity is a tiebreaker among good matches, same spirit as
+# DISCOVERY_BIAS_WEIGHT, not a way to force an unrelated genre into the
+# results regardless of fit. Needs tuning once real feedback comes in, same
+# as WEIGHTS.
+DIVERSITY_PENALTY_WEIGHT = 30.0
+
+
+def _similarity(a: Game, b: Game) -> float:
+    """0 (unrelated) to 1 (maximally similar) - the signal
+    select_diverse_results uses for "how similar are these two games".
+
+    Two games sharing an IGDB collection (direct series - e.g. Risk of Rain,
+    Risk of Rain 2, and Risk of Rain Returns all share collection "Risk of
+    Rain") are treated as maximally similar outright, regardless of genre
+    overlap - a real case found in testing: two same-franchise games with
+    near-top scores both made the result page because their *genre* tags,
+    while identical, only capped the penalty at the same level as any other
+    same-genre pair, and nothing else scored close enough to outrank the
+    second one anyway. Franchise sameness is a much stronger "too similar to
+    both show" signal than genre overlap and needs to dominate it, not just
+    add to it.
+
+    Otherwise, falls back to genre/custom_categories tag-set overlap
+    (Jaccard) - the most legible "what kind of game is this" data already in
+    the schema; a proper embedding-based similarity is a v2 upgrade
+    (architecture.md section 6), not this.
+    """
+    if set(a.igdb_collections) & set(b.igdb_collections):
+        return 1.0
+
+    tags_a = set(a.genres) | set(a.custom_categories)
+    tags_b = set(b.genres) | set(b.custom_categories)
+    union = tags_a | tags_b
+    if not union:
+        return 0.0
+    return len(tags_a & tags_b) / len(union)
+
+
+def select_diverse_results(ranked: list[tuple[Game, float]], limit: int) -> list[tuple[Game, float]]:
+    """Greedy diversity selection (maximal marginal relevance) over an
+    already-scored, already-sorted candidate list: picks `limit` results,
+    each the best remaining match penalized by how similar (genre/category
+    overlap) it is to what's already been picked - so a small result page
+    isn't several near-identical roguelikes just because the catalog has
+    several near-identical roguelikes that all score well.
+
+    Deliberately NOT inside rank_candidates - that function stays a plain
+    score-sorted list (see test_rank_candidates_returns_a_flat_reorderable_
+    list) so this can be a separate post-processing step the router applies,
+    without touching apply_hard_filters, score_candidate, or discovery bias.
+
+    `ranked` must already be in score-sorted order (rank_candidates' output)
+    and is restricted here to the top DIVERSITY_SHORTLIST_SIZE before
+    selecting - diversity only ever trades among the already-strongest
+    matches, never reaches into weak ones for novelty.
+    """
+    shortlist = ranked[:DIVERSITY_SHORTLIST_SIZE]
+    if not shortlist:
+        return []
+
+    selected = [shortlist[0]]
+    remaining = shortlist[1:]
+
+    while len(selected) < limit and remaining:
+        def penalized_score(candidate: tuple[Game, float]) -> float:
+            game, match_score = candidate
+            max_similarity = max(_similarity(game, picked) for picked, _ in selected)
+            return match_score - max_similarity * DIVERSITY_PENALTY_WEIGHT
+
+        best = max(remaining, key=penalized_score)
+        selected.append(best)
+        remaining.remove(best)
+
+    return selected

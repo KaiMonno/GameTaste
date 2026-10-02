@@ -25,6 +25,7 @@ def make_game(
     genres: list[str] | None = None,
     platforms: list[str] | None = None,
     custom_categories: list[str] | None = None,
+    igdb_collections: list[str] | None = None,
 ) -> Game:
     return Game(
         id=id,
@@ -37,4 +38,5 @@ def make_game(
         genres=genres if genres is not None else [],
         platforms=platforms if platforms is not None else [],
         custom_categories=custom_categories if custom_categories is not None else [],
+        igdb_collections=igdb_collections if igdb_collections is not None else [],
     )

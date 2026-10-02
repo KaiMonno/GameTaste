@@ -26,7 +26,6 @@ export interface HardFilters {
   exclude_genres: string[];
   platforms: string[];
   require_multiplayer: boolean;
-  min_review_score: number | null;
 }
 
 export interface SoftPreferences {
@@ -62,13 +61,12 @@ export async function getFacets(): Promise<Facets> {
 
 export async function getRecommendations(
   hardFilters: HardFilters,
-  softPreferences: SoftPreferences,
-  limit = 20
+  softPreferences: SoftPreferences
 ): Promise<RecommendationResult[]> {
   const res = await fetch(`${API_URL}/recommendations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ hard_filters: hardFilters, soft_preferences: softPreferences, limit }),
+    body: JSON.stringify({ hard_filters: hardFilters, soft_preferences: softPreferences }),
   });
 
   if (!res.ok) {

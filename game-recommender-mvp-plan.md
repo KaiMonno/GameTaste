@@ -140,6 +140,28 @@ it a better recommendation, and the reverse (deliberately down-ranking popular g
   for the scoring/discovery-bias math and the Backloggd matching algorithm, integration tests against the
   real dev catalog. See test docstrings for what each demonstrates, not just "does it run".
 
+**Phase 3.7 — Curated recommendation set**
+
+Product decision: recommendations should come ONLY from a hand-picked list of niche/obscure games (the
+repo-root `Game List` file), not the broad IGDB-synced catalog - the broad catalog's enriched mainstream
+games are kept around (so their IGDB/HLTB/LLM-enrichment work isn't wasted if re-curated later) but are
+never recommendation candidates.
+
+- **`curated_list_games` table added** (`models.CuratedListGame`) - a membership table, not a boolean flag
+  on `games`, so removal is a clean delete rather than hunting down a scattered column (mirrors the
+  `backloggd_top_100` table's shape, though that one stays explicitly NOT a scoring input - this one is).
+- **`scripts/sync_curated_list.py` added** - treats `Game List` as the single source of truth and diffs
+  current membership against it (adds newly-listed titles via the same IGDB-search + HLTB-match resolution
+  `enrich_games.py --titles-file` already used, removes titles no longer listed) rather than taking manual
+  add/remove commands. Workflow going forward: edit `Game List`, run this script, then run
+  `enrich_games.py` (no args) to enrich anything newly added.
+- **`services/scoring.py` `restrict_to_curated_list()` added** - deliberately NOT folded into
+  `apply_hard_filters`, which is also reused by `match_backloggd_top100.py` and `enrich_games.py
+  --titles-file` to check filter-exclusion correctness against the FULL catalog, independent of curation.
+  Wired into `/recommendations` and the default (no-args) `enrich_games.py` query, so a plain enrichment
+  run now only ever spends LLM budget on curated games. `/games/facets` is scoped the same way, so the
+  filter UI never offers a genre/platform that returns zero curated results.
+
 **Phase 4 — Explanations**
 - Add the per-candidate LLM "why/why not" call on the top N results
 

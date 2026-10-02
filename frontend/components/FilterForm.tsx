@@ -52,7 +52,6 @@ export default function FilterForm({ onSubmit, loading }: Props) {
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [genres, setGenres] = useState<string[]>([]);
   const [requireMultiplayer, setRequireMultiplayer] = useState(false);
-  const [minReviewScore, setMinReviewScore] = useState<string>("");
   const [targetLengthHours, setTargetLengthHours] = useState<string>("");
   const [targetStoryGameplayRatio, setTargetStoryGameplayRatio] = useState<string>("");
 
@@ -75,7 +74,6 @@ export default function FilterForm({ onSubmit, loading }: Props) {
       exclude_genres: [],
       platforms,
       require_multiplayer: requireMultiplayer,
-      min_review_score: minReviewScore ? Number(minReviewScore) : null,
     };
 
     const softPreferences: SoftPreferences = {
@@ -119,19 +117,6 @@ export default function FilterForm({ onSubmit, loading }: Props) {
       {/* No popularity slider - the engine now applies a small, always-on
           discovery bias toward less-obvious games automatically, rather
           than letting the user dial popularity up or down. */}
-
-      <div>
-        <label className="block text-sm font-medium">Minimum review score (0-100)</label>
-        <input
-          type="number"
-          min={0}
-          max={100}
-          value={minReviewScore}
-          onChange={(e) => setMinReviewScore(e.target.value)}
-          className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-          placeholder="e.g. 70"
-        />
-      </div>
 
       {facetsError && <p className="text-sm text-red-600">{facetsError}</p>}
 

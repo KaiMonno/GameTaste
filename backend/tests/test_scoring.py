@@ -8,10 +8,12 @@ reasoning holds against real numbers, not just that the code runs.
 from app.schemas import SoftPreferences
 from app.services.scoring import (
     DISCOVERY_BIAS_WEIGHT,
+    DIVERSITY_SHORTLIST_SIZE,
     WEIGHTS,
     _discovery_log_bounds,
     rank_candidates,
     score_candidate,
+    select_diverse_results,
 )
 from tests.conftest import make_game
 
@@ -134,3 +136,85 @@ def test_missing_rating_count_gets_no_discovery_boost():
     # match_score plus some positive boost (400 is the niche end of a 2-game
     # set) - so known should score >= unknown, not the reverse.
     assert known_score >= unknown_score
+
+
+# --- C. Diversity selection ("show 5 results, as different as possible") ---
+
+
+def test_diverse_results_prefers_variety_over_near_duplicate_top_scores():
+    """Three near-identical-score Roguelikes shouldn't all make a 2-result
+    page just because they're the top 3 raw scores - a solidly-matching but
+    differently-tagged game should bump the weaker duplicate out."""
+    ranked = [
+        (make_game(id=1, genres=["Roguelike"]), 95.0),
+        (make_game(id=2, genres=["Roguelike"]), 94.0),
+        (make_game(id=3, genres=["Roguelike"]), 93.0),
+        (make_game(id=4, genres=["Visual Novel"]), 85.0),
+    ]
+
+    selected = select_diverse_results(ranked, limit=2)
+    selected_ids = [game.id for game, _ in selected]
+
+    assert selected_ids[0] == 1, "the single best match should always be picked first"
+    assert 4 in selected_ids, "the differently-tagged game should win the second slot over a near-duplicate"
+
+
+def test_diversity_never_drops_a_much_better_match_for_variety():
+    """Diversity is a tiebreaker among comparable matches, not a way to
+    force in a worse game just because it's a different genre - mirrors
+    test_significantly_better_match_wins_even_if_mainstream's discovery-bias
+    guarantee, for the same reason."""
+    ranked = [
+        (make_game(id=1, genres=["RPG"]), 95.0),
+        (make_game(id=2, genres=["RPG"]), 90.0),  # same genre as #1, but still a strong match
+        (make_game(id=3, genres=["Puzzle"]), 40.0),  # different genre, but a much weaker match
+    ]
+
+    selected = select_diverse_results(ranked, limit=2)
+    selected_ids = [game.id for game, _ in selected]
+
+    assert selected_ids == [1, 2], (
+        f"the same-genre-but-still-strong match should beat the differently-tagged weak match, got {selected_ids}"
+    )
+
+
+def test_diverse_results_only_considers_the_shortlist():
+    """Diversity only trades among the top DIVERSITY_SHORTLIST_SIZE matches -
+    a uniquely-tagged game ranked just outside that shortlist must not be
+    pulled in purely for variety; that would mean a materially worse match
+    than the catalog actually has to offer."""
+    ranked = [(make_game(id=i, genres=["RPG"]), 100.0 - i) for i in range(DIVERSITY_SHORTLIST_SIZE)]
+    # One more game, uniquely tagged, scored just below the whole shortlist -
+    # so it sits right outside it (rank DIVERSITY_SHORTLIST_SIZE + 1).
+    ranked.append((make_game(id=999, genres=["Visual Novel"]), 100.0 - DIVERSITY_SHORTLIST_SIZE - 1))
+
+    selected = select_diverse_results(ranked, limit=5)
+    selected_ids = [game.id for game, _ in selected]
+
+    assert 999 not in selected_ids, "a game outside the shortlist must never be pulled in just for variety"
+
+
+def test_shared_collection_forces_max_similarity_even_with_low_genre_overlap():
+    """Real case found in testing: Risk of Rain 2 and Risk of Rain Returns
+    only share 2 of 6 combined genre tags (Jaccard ~0.33) - genre overlap
+    alone gave them a weak diversity penalty and both still made a 5-result
+    page. They share an IGDB collection ("Risk of Rain"), which must force
+    them to the maximum penalty regardless of how their genre tags compare.
+    """
+    ror2 = make_game(
+        id=1, genres=["Shooter", "Adventure", "Indie"], custom_categories=["Roguelite"],
+        igdb_collections=["Risk of Rain"],
+    )
+    ror_returns = make_game(
+        id=2, genres=["Shooter", "Hack and slash/Beat 'em up", "Indie"], custom_categories=["Roguelike"],
+        igdb_collections=["Risk of Rain"],
+    )
+    unrelated = make_game(id=3, genres=["Puzzle"], igdb_collections=[])
+
+    ranked = [(ror2, 90.0), (ror_returns, 85.0), (unrelated, 60.0)]
+    selected = select_diverse_results(ranked, limit=2)
+    selected_ids = [game.id for game, _ in selected]
+
+    assert selected_ids == [1, 3], (
+        f"same-collection game should be penalized out in favor of the unrelated one, got {selected_ids}"
+    )

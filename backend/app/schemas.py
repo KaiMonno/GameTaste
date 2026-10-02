@@ -33,7 +33,6 @@ class HardFilters(BaseModel):
     exclude_genres: list[str] = []
     platforms: list[str] = []
     require_multiplayer: bool = False
-    min_review_score: float | None = None
 
 
 class SoftPreferences(BaseModel):
@@ -54,7 +53,6 @@ class SoftPreferences(BaseModel):
 class RecommendationRequest(BaseModel):
     hard_filters: HardFilters = HardFilters()
     soft_preferences: SoftPreferences = SoftPreferences()
-    limit: int = 20
 
 
 class RecommendationResult(BaseModel):

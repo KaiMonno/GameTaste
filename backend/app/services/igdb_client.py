@@ -21,9 +21,18 @@ IGDB_BASE_URL = "https://api.igdb.com/v4"
 # querying `fields *` against a known expansion - it came back with
 # `game_type`, not `category`); used to exclude DLC/expansions from
 # recommendations by default - see services/scoring.py.
+#
+# `collections.name` groups a game with its direct series (confirmed via a
+# live query: Risk of Rain, Risk of Rain 2, and Risk of Rain Returns all
+# share collection id 6420, name "Risk of Rain") - used by
+# services/scoring.py select_diverse_results to recognize same-franchise
+# games as maximally similar regardless of whether their genre tags happen
+# to overlap. IGDB also has a `franchises` field (broader, publisher-level
+# groupings) but it came back empty for this exact case - `collections` is
+# the field that actually has data for the games this matters for.
 GAME_FIELDS = (
     "id,name,summary,genres.name,platforms.name,game_modes.name,rating,rating_count,"
-    "similar_games,game_type"
+    "similar_games,game_type,collections.name"
 )
 
 
@@ -101,6 +110,35 @@ class IGDBClient:
             search "{title}";
             fields {GAME_FIELDS};
             limit {limit};
+        """
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{IGDB_BASE_URL}/games",
+                headers=await self._headers(),
+                content=query,
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    async def fetch_by_ids(self, ids: list[int]) -> list[dict]:
+        """Fetch specific games by id, not a popularity-sorted page - needed
+        to backfill a newly-added IGDB-sourced field onto rows that were
+        never covered by fetch_games' bulk popularity sync. `games` now
+        includes titles pulled in via search_games (resolve_titles, for the
+        curated list - see scripts/sync_curated_list.py), which are NOT
+        necessarily IGDB's top-N-by-rating_count - re-running the bulk sync
+        with more pages pulls in IGDB's actual global next-N-by-popularity,
+        not specifically these already-known ids. Caller must batch for
+        lists over ~500 (IGDB's own per-request limit) - see
+        scripts/backfill_igdb_fields.py.
+        """
+        if not ids:
+            return []
+        id_list = ",".join(str(i) for i in ids)
+        query = f"""
+            fields {GAME_FIELDS};
+            where id = ({id_list});
+            limit {len(ids)};
         """
         async with httpx.AsyncClient() as client:
             resp = await client.post(

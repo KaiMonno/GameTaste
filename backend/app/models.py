@@ -30,6 +30,13 @@ class Game(Base):
     # expansions from recommendations by default - see services/scoring.py.
     igdb_category: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # IGDB's direct-series grouping (e.g. "Risk of Rain" links Risk of Rain,
+    # Risk of Rain 2, and Risk of Rain Returns) - names, not ids, matching
+    # the genres/platforms convention. Used by services/scoring.py
+    # select_diverse_results to recognize same-franchise games as maximally
+    # similar even when their genre tags happen not to overlap much.
+    igdb_collections: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+
     igdb_rating: Mapped[float | None] = mapped_column(Float, nullable=True)
     igdb_rating_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     similar_game_ids: Mapped[list[int]] = mapped_column(ARRAY(Integer), default=list)
@@ -120,3 +127,22 @@ class BackloggdTop100(Base):
     match_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)  # rapidfuzz score, 0-100
 
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CuratedListGame(Base):
+    """Membership in the hand-curated recommendation set - the repo-root
+    `Game List` file. /recommendations draws candidates ONLY from games with
+    a row here (see services/scoring.py restrict_to_curated_list), not from
+    the full `games` table - `games` also holds broad-IGDB-sync rows kept
+    around for their enrichment/HLTB data but never recommended.
+
+    Kept in sync with `Game List` by scripts/sync_curated_list.py, which
+    treats the file as the single source of truth and diffs against it
+    (adds newly-listed titles, deletes rows for titles no longer listed) -
+    there's no separate manual add/remove operation to keep in sync by hand.
+    """
+
+    __tablename__ = "curated_list_games"
+
+    game_id: Mapped[int] = mapped_column(ForeignKey("games.id"), primary_key=True)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

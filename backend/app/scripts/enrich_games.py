@@ -45,7 +45,7 @@ from app.schemas import HardFilters
 from app.services.hltb_client import match_game as hltb_match_game
 from app.services.igdb_client import IGDBClient
 from app.services.llm_enrichment import ENRICHMENT_VERSION, enrich_game
-from app.services.scoring import apply_hard_filters
+from app.services.scoring import apply_hard_filters, restrict_to_curated_list
 from app.services.title_matching import classify_match
 from app.scripts.sync_igdb import upsert_games
 
@@ -262,7 +262,14 @@ async def run(
             # - reused here so enrichment never spends a Claude call on a game
             # that can't be recommended anyway, and so the two exclusion rules
             # can't drift apart into two different definitions of "excluded".
-            query = apply_hard_filters(HardFilters()).where(
+            #
+            # restrict_to_curated_list scopes this to the hand-curated list
+            # (see services/scoring.py) - a plain, no-args run now only ever
+            # spends LLM budget on games that can actually be recommended,
+            # not the broader IGDB-synced catalog. --titles-file bypasses
+            # this (it names its own explicit game list), which is why this
+            # restriction lives in this branch only.
+            query = restrict_to_curated_list(apply_hard_filters(HardFilters())).where(
                 or_(Game.enrichment_version.is_(None), Game.enrichment_version < ENRICHMENT_VERSION)
             )
             if limit is not None:
