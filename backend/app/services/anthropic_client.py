@@ -38,6 +38,15 @@ logger = logging.getLogger(__name__)
 # over several games), not less.
 DEFAULT_MAX_TOKENS = 2000
 
+# Offline enrichment (llm_enrichment.py) deliberately stays on Sonnet 5 - it's
+# a background job, latency doesn't matter, and the per-game analysis it does
+# from scratch (inferring pacing/tone/complaints/etc. from just a summary)
+# benefits from the stronger model. Haiku is for the live, user-facing path
+# (llm_explanations.py) where speed is the point and the task is simpler -
+# reconciling analysis Sonnet already did, not generating it.
+MODEL_SONNET = "claude-sonnet-5"
+MODEL_HAIKU = "claude-haiku-4-5-20251001"
+
 
 def _strip_markdown_fence(text: str) -> str:
     stripped = text.strip()
@@ -49,7 +58,7 @@ def _strip_markdown_fence(text: str) -> str:
 
 
 async def _call_once(
-    client: AsyncAnthropic, system_prompt: str, user_content: str, max_tokens: int
+    client: AsyncAnthropic, model: str, system_prompt: str, user_content: str, max_tokens: int
 ) -> tuple[dict | list, dict]:
     """One API call + parse attempt. Returns (parsed_json, usage_dict). Raises
     with diagnostic detail (stop_reason, content block types) rather than a
@@ -57,7 +66,7 @@ async def _call_once(
     content, so any recurrence is debuggable instead of exploding blindly.
     """
     response = await client.messages.create(
-        model="claude-sonnet-5",
+        model=model,
         max_tokens=max_tokens,
         system=system_prompt,
         messages=[{"role": "user", "content": user_content}],
@@ -79,6 +88,7 @@ async def call_claude_json(
     client: AsyncAnthropic,
     system_prompt: str,
     user_content: str,
+    model: str = MODEL_SONNET,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     log_context: str = "",
 ) -> tuple[dict | list, dict, bool]:
@@ -89,9 +99,9 @@ async def call_claude_json(
     cosmetic, doesn't affect behavior.
     """
     try:
-        data, usage = await _call_once(client, system_prompt, user_content, max_tokens)
+        data, usage = await _call_once(client, model, system_prompt, user_content, max_tokens)
         return data, usage, False
     except Exception as exc:  # noqa: BLE001 - logged, then retried once
         logger.warning("call_claude_json(%s) first attempt failed (%r), retrying once", log_context, exc)
-        data, usage = await _call_once(client, system_prompt, user_content, max_tokens)
+        data, usage = await _call_once(client, model, system_prompt, user_content, max_tokens)
         return data, usage, True

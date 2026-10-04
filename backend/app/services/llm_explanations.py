@@ -13,6 +13,14 @@ only to reconcile analysis it already has with what *this specific query*
 asked for. That's what keeps a 5-game batched call cheap and fast despite
 being live: the hard analytical work happened once, offline, per game; this
 call's job is just personalization.
+
+Runs on Haiku, not Sonnet (see anthropic_client.py MODEL_HAIKU) - this is the
+one live, user-facing call in the whole app, so its latency is what users
+actually feel on every search. The reconciliation task this prompt asks for
+is simple enough (connect pre-computed analysis to a stated query, don't
+generate new analysis) that the faster/cheaper model is the right fit, not
+a quality compromise - verify this holds if the prompt grows more demanding
+later.
 """
 
 import json
@@ -22,9 +30,21 @@ from anthropic import AsyncAnthropic
 from app.config import get_settings
 from app.models import Game
 from app.schemas import SoftPreferences
-from app.services.anthropic_client import call_claude_json
+from app.services.anthropic_client import MODEL_HAIKU, call_claude_json
 
-EXPLANATION_SYSTEM_PROMPT = """You are writing short, personalized recommendation blurbs for a \
+# Short enough to scan at a glance in a results list, per product direction -
+# these are one-line blurbs under each result, not paragraphs. Two numbers,
+# not one: the prompt asks for PROMPT_TARGET_CHARS, but Haiku treats a
+# character count as a rough target rather than a hard rule - observed
+# overshooting a stated 90-char "hard limit" by 10-15 chars consistently
+# (101-104 actual). Asking for a lower target than what's actually enforced
+# leaves room for that overshoot while still landing under HARD_MAX_CHARS in
+# the normal case; _enforce_max_length is the real guarantee (see below),
+# not the prompt wording.
+PROMPT_TARGET_CHARS = 65
+HARD_MAX_CHARS = 90
+
+EXPLANATION_SYSTEM_PROMPT = f"""You are writing short, personalized recommendation blurbs for a \
 video game recommendation engine.
 
 For each game, you're given its pre-computed analysis (core gameplay loop, tone, narrative style, \
@@ -33,16 +53,32 @@ this user stated for THIS search. Your job is to connect the two - don't just re
 analysis, explain how THIS game relates to what THIS user asked for.
 
 Write a "why_recommended" and a "why_not" for each game:
-- why_recommended: 1-2 sentences, specific to this game and this user's stated preferences. If the \
-user gave few or no preferences, draw from the game's standout strengths instead.
-- why_not: 1-2 sentences, honest about a real mismatch or limitation - from the game's own
+- why_recommended: ONE short sentence, specific to this game and this user's stated preferences. If \
+the user gave few or no preferences, draw from the game's standout strengths instead.
+- why_not: ONE short sentence, honest about a real mismatch or limitation - from the game's own
   common_complaints/player_fit_mismatch, or a genuine gap versus what the user asked for (e.g. they
   wanted something shorter than this game runs). Don't invent a complaint that isn't true of the game.
 
-Respond with ONLY a JSON array, one object per game in the same order given:
-[{"id": int, "why_recommended": string, "why_not": string}, ...]
-Keep each string under 220 characters.
+Be concise and direct - cut filler words, don't restate the game's name or genre, get straight to the
+specific point. A terse fragment beats a full sentence if it's still clear. Respond with ONLY a JSON
+array, one object per game in the same order given:
+[{{"id": int, "why_recommended": string, "why_not": string}}, ...]
+Each string must be under {PROMPT_TARGET_CHARS} characters.
 """
+
+
+def _enforce_max_length(text: str, max_chars: int = HARD_MAX_CHARS) -> str:
+    """Server-side guarantee behind the prompt's PROMPT_TARGET_CHARS ask -
+    Haiku treats a stated character count as a target, not a rule, so this
+    is what actually keeps every blurb under HARD_MAX_CHARS. Cuts at the
+    last word boundary rather than mid-word and appends an ellipsis (counted
+    against the limit) so a rare overshoot still reads cleanly.
+    """
+    text = text.strip()
+    if len(text) <= max_chars:
+        return text
+    truncated = text[: max_chars - 1].rsplit(" ", 1)[0]
+    return truncated.rstrip(".,;:") + "…"
 
 
 def _candidate_payload(game: Game) -> dict:
@@ -84,13 +120,18 @@ async def explain_candidates(games: list[Game], preferences: SoftPreferences) ->
 
     # max_tokens scales a little with game count but mostly just needs
     # headroom for extended thinking (see anthropic_client.py) - 5 short
-    # blurb-pairs is a small output on its own.
+    # blurb-pairs is a small output on its own, especially now that each
+    # blurb targets PROMPT_TARGET_CHARS.
     data, _usage, _retried = await call_claude_json(
         client,
         EXPLANATION_SYSTEM_PROMPT,
         user_content,
-        max_tokens=400 * len(games) + 1500,
+        model=MODEL_HAIKU,
+        max_tokens=150 * len(games) + 1000,
         log_context=f"explain_candidates({len(games)} games)",
     )
 
-    return {item["id"]: (item["why_recommended"], item["why_not"]) for item in data}
+    return {
+        item["id"]: (_enforce_max_length(item["why_recommended"]), _enforce_max_length(item["why_not"]))
+        for item in data
+    }

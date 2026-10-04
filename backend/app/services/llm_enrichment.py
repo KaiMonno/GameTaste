@@ -15,7 +15,7 @@ from anthropic import AsyncAnthropic
 
 from app.config import get_settings
 from app.models import Game
-from app.services.anthropic_client import call_claude_json
+from app.services.anthropic_client import MODEL_SONNET, call_claude_json
 
 ENRICHMENT_VERSION = 3
 
@@ -136,7 +136,12 @@ async def enrich_game(game: Game) -> EnrichmentResult:
     # `retried` is tracked on the result so reports can see how often this
     # actually happens rather than only seeing the eventual success.
     data, usage, retried = await call_claude_json(
-        client, ENRICHMENT_SYSTEM_PROMPT, user_content, max_tokens=2000, log_context=f"enrich_game({game.name!r})"
+        client,
+        ENRICHMENT_SYSTEM_PROMPT,
+        user_content,
+        model=MODEL_SONNET,
+        max_tokens=2000,
+        log_context=f"enrich_game({game.name!r})",
     )
 
     # Defense in depth: the prompt constrains Claude to CUSTOM_CATEGORIES, but
