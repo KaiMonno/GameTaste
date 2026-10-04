@@ -162,8 +162,25 @@ never recommendation candidates.
   run now only ever spends LLM budget on curated games. `/games/facets` is scoped the same way, so the
   filter UI never offers a genre/platform that returns zero curated results.
 
-**Phase 4 — Explanations**
-- Add the per-candidate LLM "why/why not" call on the top N results
+**Phase 4 — Explanations** — **done**
+- Add the per-candidate LLM "why/why not" call on the top N results — **wired into `/recommendations`**:
+  called on the final 5 diverse results only (never the broader 20-candidate shortlist), batched into
+  one call. Grounded in the v3 enrichment fields already computed offline per game (core_loop,
+  tone_atmosphere, player_fit, standout_strengths, common_complaints, ...) rather than asking Claude to
+  analyze each game from scratch live - keeps the live call cheap (~$0.0125/search, ~7s, measured against
+  real data) since the hard analytical work already happened once per game, offline; this call's only job
+  is reconciling that existing analysis with what *this specific query* asked for. Verified live: asking
+  for ~10hr/70%-story games produced explanations that correctly cited the actual length/ratio match (or
+  honestly flagged a real mismatch, e.g. "runs about 13 hours, longer than your target") rather than
+  generic text.
+  - Reused `services/anthropic_client.py` (extracted from `llm_enrichment.py`) for the same hardened
+    call logic (retry-once, correct content-block scanning, markdown-fence stripping) rather than
+    re-forking a naive implementation that would hit the identical three bugs again.
+  - Explanations are best-effort: if the live call fails for any reason, `/recommendations` still returns
+    its 5 numeric results with `why_recommended`/`why_not` left null, rather than failing the whole
+    search - the formula-driven match score must never depend on a live LLM call succeeding. Tested via
+    monkeypatched failure, not just assumed.
+  - No frontend changes needed - `ResultsList.tsx` already rendered these fields, just never had data.
 
 **Phase 5 — Basic profile**
 - Accounts, saved preference defaults, wishlist (simple save-a-game-to-list)

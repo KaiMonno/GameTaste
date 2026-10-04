@@ -10,14 +10,12 @@ them is a separate, later decision, not part of whatever run bumped this.
 """
 
 import json
-import logging
 
 from anthropic import AsyncAnthropic
 
 from app.config import get_settings
 from app.models import Game
-
-logger = logging.getLogger(__name__)
+from app.services.anthropic_client import call_claude_json
 
 ENRICHMENT_VERSION = 3
 
@@ -122,65 +120,6 @@ class EnrichmentResult:
         self.retried = retried
 
 
-async def _call_once(client: AsyncAnthropic, user_content: str) -> tuple[dict, dict]:
-    """One API call + parse attempt. Returns (parsed_json, usage_dict).
-
-    max_tokens is 2000, not the ~300-800 the simpler pre-v3 prompt used -
-    root-caused a real failure mode during testing: Sonnet 5 does internal
-    extended thinking on this prompt by default, and that thinking counts
-    against max_tokens. One observed failure had 670 of an 800 max_tokens
-    budget consumed by thinking alone (usage.output_tokens_details.
-    thinking_tokens), leaving no room for the actual JSON and truncating the
-    response with stop_reason="max_tokens".
-
-    Scans ALL of response.content for the text block instead of assuming
-    it's response.content[0] - a second, more common real bug found running
-    the full list: when extended thinking is used, response.content[0] is a
-    *thinking* block (no `.text`), and the actual answer is content[1]. The
-    old index-0-only check misread this as an empty response on ~9% of
-    calls (stop_reason="end_turn", content_blocks=2, real thinking_tokens
-    consumed, genuine JSON sitting right there in block 1) - every one of
-    those was a wasted retry, or in ~10% of cases a real failure, purely
-    from not looking at the right content block, not an API problem.
-    """
-    response = await client.messages.create(
-        model="claude-sonnet-5",
-        max_tokens=2000,
-        system=ENRICHMENT_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_content}],
-    )
-    usage = response.usage.model_dump() if response.usage else {}
-
-    text_block = next((block for block in response.content if getattr(block, "type", None) == "text"), None)
-
-    if text_block is None or not text_block.text:
-        raise ValueError(
-            f"No text content block in response (stop_reason={response.stop_reason!r}, "
-            f"content_block_types={[getattr(b, 'type', None) for b in response.content]}, usage={usage})"
-        )
-
-    return json.loads(_strip_markdown_fence(text_block.text)), usage
-
-
-def _strip_markdown_fence(text: str) -> str:
-    """The system prompt says "respond with ONLY a JSON object", but Claude
-    still occasionally wraps the answer in a ```json ... ``` fence anyway
-    (observed reproducibly for at least one real game during enrichment -
-    'Limbo', stop_reason="end_turn", otherwise well-formed JSON inside the
-    fence). json.loads on a string starting with a backtick fails immediately
-    with "Expecting value: line 1 column 1 (char 0)", which is
-    indistinguishable from a genuinely empty response unless you go look -
-    strip the fence before parsing instead of treating this as a retry-and-
-    hope case.
-    """
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = stripped.removeprefix("```json").removeprefix("```")
-        stripped = stripped.removesuffix("```")
-        stripped = stripped.strip()
-    return stripped
-
-
 async def enrich_game(game: Game) -> EnrichmentResult:
     settings = get_settings()
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
@@ -192,17 +131,13 @@ async def enrich_game(game: Game) -> EnrichmentResult:
         f"Main story length: {f'{game.hltb_main} hours' if game.hltb_main else 'N/A'}\n"
     )
 
-    # One automatic retry on an empty/malformed response - see _call_once's
-    # docstring for why this is a real observed failure mode, not paranoia.
+    # max_tokens=2000 (not the ~300-800 the simpler pre-v3 prompt used) and
+    # the retry-once behavior are both explained in anthropic_client.py -
     # `retried` is tracked on the result so reports can see how often this
     # actually happens rather than only seeing the eventual success.
-    try:
-        data, usage = await _call_once(client, user_content)
-        retried = False
-    except Exception as exc:
-        logger.warning("enrich_game(%r) first attempt failed (%r), retrying once", game.name, exc)
-        data, usage = await _call_once(client, user_content)
-        retried = True
+    data, usage, retried = await call_claude_json(
+        client, ENRICHMENT_SYSTEM_PROMPT, user_content, max_tokens=2000, log_context=f"enrich_game({game.name!r})"
+    )
 
     # Defense in depth: the prompt constrains Claude to CUSTOM_CATEGORIES, but
     # don't let a model slip-up put an uncontrolled value into the taxonomy -

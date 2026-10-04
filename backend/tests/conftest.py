@@ -9,9 +9,40 @@ None, not [], unless set explicitly here. Getting this wrong doesn't error
 loudly - it surfaces later as a confusing `TypeError: argument of type
 'NoneType' is not iterable` deep inside scoring.py, so every field the
 scoring engine actually reads gets an explicit, real default below.
+
+session_factory is the shared real-DB fixture for integration-style tests -
+see its own docstring for why it uses a fresh NullPool engine per test
+rather than app.db's module-level singleton.
 """
 
+import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
+
+from app.config import get_settings
 from app.models import Game
+
+
+@pytest.fixture
+async def session_factory():
+    """A fresh engine per test, not app.db's module-level singleton.
+
+    app.db.engine is a global created once at import time and is fine for
+    the real app (one process, one event loop, for its whole life) - but
+    pytest-asyncio gives each async test its own event loop, and an asyncpg
+    connection pool is bound to the loop that first used it. Reusing the
+    app-wide engine across tests broke on the second test with "cannot
+    perform operation: another operation is in progress" / "attached to a
+    different loop". NullPool sidesteps this entirely: no connection is ever
+    held open across a fixture teardown to be reused in a different loop.
+    """
+    settings = get_settings()
+    engine = create_async_engine(settings.database_url, echo=False, poolclass=NullPool)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        yield factory
+    finally:
+        await engine.dispose()
 
 
 def make_game(

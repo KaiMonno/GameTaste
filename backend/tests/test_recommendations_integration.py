@@ -23,36 +23,14 @@ event loops.
 """
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
 from sqlalchemy import select
 
-from app.config import get_settings
 from app.models import Game
 from app.schemas import HardFilters, SoftPreferences
 from app.services.scoring import apply_hard_filters, rank_candidates
 
-
-@pytest.fixture
-async def session_factory():
-    """A fresh engine per test, not app.db's module-level singleton.
-
-    app.db.engine is a global created once at import time and is fine for
-    the real app (one process, one event loop, for its whole life) - but
-    pytest-asyncio gives each async test its own event loop, and an asyncpg
-    connection pool is bound to the loop that first used it. Reusing the
-    app-wide engine across tests broke on the second test with "cannot
-    perform operation: another operation is in progress" / "attached to a
-    different loop". NullPool sidesteps this entirely: no connection is ever
-    held open across a fixture teardown to be reused in a different loop.
-    """
-    settings = get_settings()
-    engine = create_async_engine(settings.database_url, echo=False, poolclass=NullPool)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    try:
-        yield factory
-    finally:
-        await engine.dispose()
+# session_factory fixture now lives in conftest.py (shared with
+# test_recommendations_router.py) - see its docstring there.
 
 
 @pytest.fixture(autouse=True)
