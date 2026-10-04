@@ -1,15 +1,60 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { importSteamLibrary, type SteamImportResult } from "@/lib/api";
+import { getSteamStatus, importSteamLibrary, type SteamImportResult, type SteamStatus } from "@/lib/api";
 
+/** The single source of truth for "is Steam linked" is the backend
+ * (GET /profile/steam-status), not a one-time toast tied to how the user
+ * got here - a toast is easy to miss, and clearing it from the URL after
+ * the OpenID redirect (see app/api/steam-openid/callback/route.ts) turned
+ * out to be unreliable on its own. Both the manual-paste form below and
+ * the OpenID redirect end up back on THIS component, which re-fetches
+ * status either way, so "linked" always reflects what's actually stored.
+ */
 export default function SteamImport() {
   const { getToken } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const [status, setStatus] = useState<SteamStatus | null>(null);
   const [steamIdentifier, setSteamIdentifier] = useState("");
   const [state, setState] = useState<"idle" | "importing" | "done" | "error">("idle");
   const [result, setResult] = useState<SteamImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const token = await getToken();
+      setStatus(await getSteamStatus(token));
+    } catch {
+      // Status is informational - if it fails to load, the form below
+      // still works, it just can't show the "already linked" banner.
+    }
+  }, [getToken]);
+
+  useEffect(() => {
+    refreshStatus();
+  }, [refreshStatus]);
+
+  // Picks up the ?steam=success|error the OpenID callback redirects back
+  // to, shows it once, then strips it from the URL and re-checks status -
+  // the status check (not the URL param surviving) is what the "linked"
+  // banner below actually depends on.
+  useEffect(() => {
+    const steamResult = searchParams.get("steam");
+    if (!steamResult) return;
+
+    if (steamResult === "error") {
+      setError(searchParams.get("message") ?? "Something went wrong signing in with Steam");
+      setState("error");
+    } else {
+      refreshStatus();
+    }
+    router.replace("/", { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   async function handleImport(e: React.FormEvent) {
     e.preventDefault();
@@ -22,6 +67,7 @@ export default function SteamImport() {
       const res = await importSteamLibrary(token, steamIdentifier.trim());
       setResult(res);
       setState("done");
+      await refreshStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import failed");
       setState("error");
@@ -30,17 +76,27 @@ export default function SteamImport() {
 
   return (
     <div className="rounded border border-gray-200 bg-white p-4">
-      <h2 className="font-semibold">Import your Steam library</h2>
+      <h2 className="font-semibold">Steam library</h2>
+
+      {status?.linked && (
+        <p className="mt-1 text-sm text-green-700">
+          ✓ Linked - {status.game_count} owned game{status.game_count === 1 ? "" : "s"} excluded from your
+          recommendations
+          {status.last_synced_at ? ` (last synced ${new Date(status.last_synced_at).toLocaleString()})` : ""}.
+        </p>
+      )}
+
       <p className="mt-1 text-sm text-gray-600">
-        Games you already own won&apos;t show up in your recommendations. Your Steam profile and
-        game details need to be set to Public.
+        {status?.linked
+          ? "Re-sync any time to pick up newly bought or removed games."
+          : "Games you already own won't show up in your recommendations. Your Steam profile and game details need to be set to Public."}
       </p>
 
       <a
         href="/api/steam-openid/start"
         className="mt-3 inline-block rounded bg-[#1b2838] px-4 py-2 text-sm text-white hover:bg-[#2a3f5a]"
       >
-        Sign in through Steam
+        {status?.linked ? "Re-sync with Steam" : "Sign in through Steam"}
       </a>
 
       <div className="my-3 flex items-center gap-2 text-xs text-gray-400">

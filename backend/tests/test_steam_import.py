@@ -122,6 +122,36 @@ async def test_steam_import_replaces_rather_than_merges(session_factory, monkeyp
     assert items == [], "the previously-owned game should no longer be in the library after re-import"
 
 
+async def test_steam_status_reflects_library_state(session_factory, monkeypatch, test_user, matched_game):
+    game_id, steam_appid = matched_game
+
+    async with session_factory() as session:
+        before = await profile_router.get_steam_status(user=test_user, db=session)
+    assert before.linked is False
+    assert before.game_count == 0
+    assert before.last_synced_at is None
+
+    async def fake_resolve(identifier):
+        return "76561190000000001"
+
+    async def fake_owned_games(steam_id64):
+        return [(steam_appid, 90)]
+
+    monkeypatch.setattr(profile_router, "resolve_steam_id64", fake_resolve)
+    monkeypatch.setattr(profile_router, "get_owned_games", fake_owned_games)
+
+    async with session_factory() as session:
+        await profile_router.import_steam_library(
+            SteamImportRequest(steam_identifier="my-profile"), user=test_user, db=session
+        )
+
+    async with session_factory() as session:
+        after = await profile_router.get_steam_status(user=test_user, db=session)
+    assert after.linked is True
+    assert after.game_count == 1
+    assert after.last_synced_at is not None
+
+
 async def test_recommendations_excludes_owned_games_for_signed_in_user(session_factory, monkeypatch, test_user):
     """The core Phase 6 guarantee: a game in the signed-in user's library
     must not appear in their /recommendations results, but search stays

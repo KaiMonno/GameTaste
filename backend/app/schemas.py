@@ -108,6 +108,20 @@ class SteamImportResult(BaseModel):
     unmatched: int
 
 
+class SteamStatusOut(BaseModel):
+    """Whether this user has ever completed a Steam import, and how
+    current it is - derived from user_library_items rather than a
+    separate flag, so it can never drift from what's actually stored
+    (see routers/profile.py get_steam_status). Lets the frontend show a
+    persistent "Steam linked" state instead of only a one-time toast
+    right after the import completes - see components/SteamImport.tsx.
+    """
+
+    linked: bool
+    game_count: int
+    last_synced_at: datetime | None
+
+
 class FacetsOut(BaseModel):
     """Distinct genre/platform values actually present in the synced catalog -
     used to populate filter UI options so they never drift from real data.

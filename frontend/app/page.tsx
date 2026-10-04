@@ -1,7 +1,6 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth, SignedIn } from "@clerk/nextjs";
 import FilterForm from "@/components/FilterForm";
 import ResultsList from "@/components/ResultsList";
@@ -14,43 +13,6 @@ import {
   type RecommendationResult,
   type SoftPreferences,
 } from "@/lib/api";
-
-/** Reads the ?steam=success|error result the OpenID callback redirects
- * back to (see app/api/steam-openid/callback/route.ts) and clears it from
- * the URL once shown, so a page refresh doesn't keep re-displaying a
- * stale result. Split out and wrapped in Suspense because useSearchParams
- * requires that in the App Router.
- */
-function SteamImportBanner() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const steam = searchParams.get("steam");
-
-  useEffect(() => {
-    if (steam) router.replace("/", { scroll: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [steam]);
-
-  if (!steam) return null;
-
-  if (steam === "success") {
-    const total = searchParams.get("total");
-    const matched = searchParams.get("matched");
-    const unmatched = Number(searchParams.get("unmatched") ?? "0");
-    return (
-      <p className="mt-4 text-sm text-green-700">
-        Steam library imported - found {total} owned games, {matched} excluded from your
-        recommendations{unmatched > 0 ? ` (${unmatched} aren't in our catalog)` : ""}.
-      </p>
-    );
-  }
-
-  return (
-    <p className="mt-4 text-sm text-red-600">
-      {searchParams.get("message") ?? "Something went wrong signing in with Steam"}
-    </p>
-  );
-}
 
 export default function Home() {
   const { isSignedIn, getToken } = useAuth();
@@ -111,9 +73,8 @@ export default function Home() {
 
       <SignedIn>
         <div className="mt-8">
-          <SteamImport />
           <Suspense fallback={null}>
-            <SteamImportBanner />
+            <SteamImport />
           </Suspense>
         </div>
       </SignedIn>

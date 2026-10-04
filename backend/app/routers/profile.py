@@ -1,10 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.models import Game, User, UserLibraryItem, UserPreferences
-from app.schemas import SteamImportRequest, SteamImportResult, UserPreferencesIn, UserPreferencesOut
+from app.schemas import (
+    SteamImportRequest,
+    SteamImportResult,
+    SteamStatusOut,
+    UserPreferencesIn,
+    UserPreferencesOut,
+)
 from app.services.auth import get_current_user
 from app.services.steam_client import SteamProfileError, get_owned_games, resolve_steam_id64
 
@@ -74,3 +80,22 @@ async def import_steam_library(
     await db.commit()
 
     return SteamImportResult(total_owned=len(owned), matched=len(matched_games), unmatched=len(owned) - len(matched_games))
+
+
+@router.get("/steam-status", response_model=SteamStatusOut)
+async def get_steam_status(
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> SteamStatusOut:
+    """Derived from the library rows themselves (count + most recent
+    added_at), not a separate "linked" flag - see SteamStatusOut. The
+    frontend polls this on load so "Steam linked" is based on what's
+    actually stored, not a one-time toast that's easy to miss or that
+    lingers past when it's still accurate - see components/SteamImport.tsx.
+    """
+    result = await db.execute(
+        select(func.count(UserLibraryItem.id), func.max(UserLibraryItem.added_at)).where(
+            UserLibraryItem.user_id == user.id
+        )
+    )
+    count, last_synced_at = result.one()
+    return SteamStatusOut(linked=count > 0, game_count=count, last_synced_at=last_synced_at)

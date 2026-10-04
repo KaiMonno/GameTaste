@@ -58,6 +58,12 @@ export interface SteamImportResult {
   unmatched: number;
 }
 
+export interface SteamStatus {
+  linked: boolean;
+  game_count: number;
+  last_synced_at: string | null;
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // Phase 5: preferences/wishlist are the only endpoints that require a signed-
@@ -161,5 +167,11 @@ export async function importSteamLibrary(token: string | null, steamIdentifier: 
     const body = await res.json().catch(() => null);
     throw new Error(body?.detail ?? `Steam import failed: ${res.status}`);
   }
+  return res.json();
+}
+
+export async function getSteamStatus(token: string | null): Promise<SteamStatus> {
+  const res = await fetch(`${API_URL}/profile/steam-status`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error(`Failed to load Steam status: ${res.status}`);
   return res.json();
 }
