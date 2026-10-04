@@ -114,10 +114,15 @@ worked through while first building this (see git history / commit messages if c
 
 5. **Accounts, saved preference defaults, and wishlist (Phase 5) are done** — Clerk handles
    sign-in/sign-up; set `CLERK_SECRET_KEY` (backend) and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` +
-   `CLERK_SECRET_KEY` (frontend) from your own Clerk dashboard to use them locally. **Not yet:**
-   Steam import, Celery/cron scheduling. Per the MVP plan those come after the core loop is
-   validated — the sync/match/enrich scripts are meant to be run by hand for now, then promoted
-   to a scheduled job once you trust the pipeline.
+   `CLERK_SECRET_KEY` (frontend) from your own Clerk dashboard to use them locally.
+
+6. **Steam library import (Phase 6) is done** — set `STEAM_API_KEY` (register at
+   [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)), then run
+   `python -m app.scripts.backfill_igdb_fields` once so existing games get a `steam_appid` to
+   match against. A signed-in user pastes their profile URL/vanity name/SteamID64 and owned games
+   get excluded from their recommendations. **Not yet:** Celery/cron scheduling — the sync/match/
+   enrich scripts are meant to be run by hand for now, then promoted to a scheduled job once you
+   trust the pipeline.
 
 ## Notes on what's deliberately stubbed
 

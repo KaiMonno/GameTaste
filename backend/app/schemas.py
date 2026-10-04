@@ -89,6 +89,25 @@ class WishlistItemOut(BaseModel):
     added_at: datetime
 
 
+class SteamImportRequest(BaseModel):
+    # Accepts a bare SteamID64, a vanity name, or a full profile URL - see
+    # services/steam_client.py _extract_identifier.
+    steam_identifier: str
+
+
+class SteamImportResult(BaseModel):
+    """matched: owned Steam games found in our own curated/synced catalog
+    (these are what actually get excluded from recommendations).
+    unmatched: owned games Steam reported that aren't in our catalog at
+    all (not an error - most libraries include games outside our curated
+    list, e.g. non-game software or titles we haven't synced).
+    """
+
+    total_owned: int
+    matched: int
+    unmatched: int
+
+
 class FacetsOut(BaseModel):
     """Distinct genre/platform values actually present in the synced catalog -
     used to populate filter UI options so they never drift from real data.

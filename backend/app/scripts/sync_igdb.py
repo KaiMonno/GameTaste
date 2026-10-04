@@ -26,6 +26,23 @@ def _extract_names(items: list[dict] | None) -> list[str]:
     return [item["name"] for item in (items or [])]
 
 
+STEAM_EXTERNAL_GAME_SOURCE = 1  # IGDB external_game_sources.id for "Steam" - confirmed by live query
+
+
+def _extract_steam_appid(external_games: list[dict] | None) -> int | None:
+    """Steam appids are always numeric, but other storefronts' uids aren't
+    (Amazon ASINs, GOG hashes, ...) - guard the int() conversion rather than
+    assume, even though we only look at entries already filtered to source=1.
+    """
+    for entry in external_games or []:
+        if entry.get("external_game_source") == STEAM_EXTERNAL_GAME_SOURCE:
+            try:
+                return int(entry["uid"])
+            except (KeyError, ValueError, TypeError):
+                continue
+    return None
+
+
 async def upsert_games(session, games_page: list[dict]) -> None:
     """Upsert a page of raw IGDB game dicts (as returned by IGDBClient) into
     `games`. Public (not `_`-prefixed) since scripts/enrich_games.py's
@@ -48,6 +65,7 @@ async def upsert_games(session, games_page: list[dict]) -> None:
             "similar_game_ids": g.get("similar_games", []),
             "igdb_category": g.get("game_type"),
             "igdb_collections": _extract_names(g.get("collections")),
+            "steam_appid": _extract_steam_appid(g.get("external_games")),
         }
         for g in games_page
     ]

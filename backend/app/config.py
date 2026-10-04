@@ -15,6 +15,9 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
 
+    # Phase 6: a single app-level key (register at
+    # steamcommunity.com/dev/apikey) - see services/steam_client.py. Not a
+    # per-user OAuth token.
     steam_api_key: str = ""
 
     # Phase 5: Clerk handles identity/sessions, we only verify the token it

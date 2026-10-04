@@ -207,8 +207,24 @@ never recommendation candidates.
     themselves require a session, enforced server-side (401), not by a
     frontend route redirect.
 
-**Phase 6 — Steam import**
-- OAuth or API-key based Steam library pull → auto-exclude owned/played games from recommendations
+**Phase 6 — Steam import (done)**
+- API-key based (not OpenID "Sign in through Steam") - a single server-held Steam Web API key
+  resolves a pasted profile URL/vanity name/SteamID64 and pulls `GetOwnedGames`
+  (`POST /profile/steam-import`, see `backend/app/services/steam_client.py`). OpenID would still
+  need this same key for the actual game-list call, so it only saves a paste at the cost of a
+  full redirect/verify round trip - not worth it for an MVP.
+  - Owned Steam appids are matched to our own `games.id` via IGDB's `external_games` endpoint
+    (`external_game_source = 1` is Steam, confirmed by live query against IGDB's
+    `external_game_sources` lookup table) - an id-to-id join, not fuzzy title matching. Backfilled
+    for the existing catalog via `scripts/backfill_igdb_fields.py`; 452/677 synced games (161/219
+    curated) have a Steam listing IGDB knows about - the rest are console exclusives or just not
+    on Steam.
+  - Re-importing replaces the user's library entirely (delete-then-reinsert) rather than merging,
+    so a refunded/removed game stops being excluded - see `models.UserLibraryItem`.
+  - `/recommendations` now takes an *optional* signed-in user (`services/auth.py
+    get_current_user_optional` - None instead of a 401 on a missing/invalid token) so anonymous
+    search is completely unaffected; a signed-in user's owned games are excluded from candidates
+    before scoring (`services/scoring.py exclude_owned_games`).
 
 **Phase 7 — Extended profile**
 - PC specs (compare against IGDB/Steam min-spec data if available), consoles owned, emulator support, controller availability — these affect *filtering* (can this person even run/play this game) more than *matching*, so they slot in as additional hard filters once the core engine exists

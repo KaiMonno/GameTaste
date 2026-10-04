@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, SignedIn } from "@clerk/nextjs";
 import FilterForm from "@/components/FilterForm";
 import ResultsList from "@/components/ResultsList";
+import SteamImport from "@/components/SteamImport";
 import {
   getPreferences,
   getRecommendations,
@@ -44,7 +45,8 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getRecommendations(hardFilters, softPreferences);
+      const token = isSignedIn ? await getToken() : null;
+      const data = await getRecommendations(hardFilters, softPreferences, token);
       setResults(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -68,6 +70,12 @@ export default function Home() {
     <main className="mx-auto max-w-2xl px-4 py-12">
       <h1 className="text-2xl font-bold">GameTaste</h1>
       <p className="mt-1 text-gray-600">Tell us what you want, we'll find the game.</p>
+
+      <SignedIn>
+        <div className="mt-8">
+          <SteamImport />
+        </div>
+      </SignedIn>
 
       <div className="mt-8">
         <FilterForm

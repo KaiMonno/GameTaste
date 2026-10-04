@@ -5,6 +5,7 @@ Rate limit: 4 req/sec - this client does not batch/throttle yet; the sync
 script is the only caller for now and stays well under that on a nightly run.
 """
 
+import logging
 import time
 
 import httpx
@@ -13,6 +14,15 @@ from app.config import get_settings
 
 TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token"
 IGDB_BASE_URL = "https://api.igdb.com/v4"
+
+# httpx's own INFO-level logging prints the full request line, which for a
+# query-param request means the secret ends up in plaintext in whatever
+# consumes these scripts' stdout/logs - found live when backfill_igdb_fields
+# was run with logging.basicConfig(INFO) and printed client_id/client_secret
+# straight into the terminal. Credentials are also sent via POST body below
+# instead of query params as defense in depth, but this covers every other
+# call this client makes regardless of parameter placement.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # Fields pulled per game - matches the "games" table columns sourced from IGDB
 # in game-recommender-architecture.md section 4. `game_type` is IGDB's own
@@ -30,9 +40,17 @@ IGDB_BASE_URL = "https://api.igdb.com/v4"
 # to overlap. IGDB also has a `franchises` field (broader, publisher-level
 # groupings) but it came back empty for this exact case - `collections` is
 # the field that actually has data for the games this matters for.
+#
+# `external_games.uid`/`external_games.external_game_source` (Phase 6) map
+# this game to its storefront listings - source id 1 is Steam (confirmed by
+# a live query against the `external_game_sources` lookup table, the same
+# way `game_type`'s rename from the older `category` was confirmed). Used to
+# match a user's imported Steam library back to our own game ids by Steam
+# appid, an id-to-id join rather than fuzzy title matching - see
+# scripts/sync_igdb.py _extract_steam_appid.
 GAME_FIELDS = (
     "id,name,summary,genres.name,platforms.name,game_modes.name,rating,rating_count,"
-    "similar_games,game_type,collections.name"
+    "similar_games,game_type,collections.name,external_games.uid,external_games.external_game_source"
 )
 
 
@@ -51,7 +69,7 @@ class IGDBClient:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 TWITCH_TOKEN_URL,
-                params={
+                data={
                     "client_id": self._client_id,
                     "client_secret": self._client_secret,
                     "grant_type": "client_credentials",

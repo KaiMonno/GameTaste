@@ -162,6 +162,18 @@ def restrict_to_curated_list(query: Select) -> Select:
     return query.join(CuratedListGame, CuratedListGame.game_id == Game.id)
 
 
+def exclude_owned_games(query: Select, owned_game_ids: list[int]) -> Select:
+    """Phase 6: drop a signed-in user's already-owned (Steam-imported)
+    games from the candidate set - see routers/recommendations.py, which
+    only calls this when there's a signed-in user with a non-empty
+    library. A no-op for an empty list rather than an always-true/no-op
+    SQL clause, since `Game.id.not_in([])` is valid but pointless to add.
+    """
+    if not owned_game_ids:
+        return query
+    return query.where(Game.id.not_in(owned_game_ids))
+
+
 def _distance_score(value: float | None, target: float | None, scale: float) -> float:
     """1.0 = exact match, decaying toward 0 as |value - target| grows past `scale`.
     Returns a neutral 0.5 when either side is missing data, so missing enrichment

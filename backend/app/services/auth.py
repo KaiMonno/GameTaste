@@ -83,3 +83,23 @@ async def get_current_user(
         return result.scalar_one()
     await db.refresh(user)
     return user
+
+
+async def get_current_user_optional(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    """Phase 6: like get_current_user, but None instead of a 401 when
+    there's no/an invalid token - for endpoints that must stay usable
+    signed-out (routers/recommendations.py excludes a signed-in user's
+    Steam library from results, but anonymous search is still the default
+    experience, not an error case).
+    """
+    settings = get_settings()
+    if not settings.clerk_secret_key:
+        return None
+    try:
+        clerk_user_id = await get_current_clerk_user_id(request)
+    except HTTPException:
+        return None
+    return await get_current_user(clerk_user_id, db)

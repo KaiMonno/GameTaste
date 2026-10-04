@@ -45,7 +45,7 @@ async def test_explanation_failure_still_returns_numeric_results(session_factory
     monkeypatch.setattr(recommendations_router, "explain_candidates", _always_fails)
 
     async with session_factory() as session:
-        response = await recommendations_router.get_recommendations(RecommendationRequest(), db=session)
+        response = await recommendations_router.get_recommendations(RecommendationRequest(), db=session, user=None)
 
     assert len(response.results) > 0, "expected at least one curated game to be recommendable"
     for result in response.results:
@@ -70,7 +70,7 @@ async def test_explanations_merge_onto_the_correct_games(session_factory, monkey
     monkeypatch.setattr(recommendations_router, "explain_candidates", _fake_explanations)
 
     async with session_factory() as session:
-        response = await recommendations_router.get_recommendations(RecommendationRequest(), db=session)
+        response = await recommendations_router.get_recommendations(RecommendationRequest(), db=session, user=None)
 
     assert captured_ids, "expected explain_candidates to be called with the final result set"
     for result in response.results:
@@ -95,7 +95,7 @@ async def test_hard_filters_still_apply_with_explanations_wired_in(session_facto
     )
 
     async with session_factory() as session:
-        response = await recommendations_router.get_recommendations(request, db=session)
+        response = await recommendations_router.get_recommendations(request, db=session, user=None)
 
     for result in response.results:
         has_horror_genre = "Horror" in result.game.genres

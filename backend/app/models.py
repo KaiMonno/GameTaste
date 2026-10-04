@@ -94,6 +94,14 @@ class Game(Base):
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     enrichment_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Phase 6: Steam's own numeric app id, sourced from IGDB's external_games
+    # (external_game_source=1 is Steam - confirmed by live query against
+    # IGDB, see services/igdb_client.py GAME_FIELDS) rather than fuzzy title
+    # matching, since this is an id-to-id join once IGDB has the mapping.
+    # Null for a game IGDB has no Steam listing for (e.g. console exclusives)
+    # or that hasn't been backfilled yet - see scripts/backfill_igdb_fields.py.
+    steam_appid: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -194,4 +202,29 @@ class WishlistItem(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     game_id: Mapped[int] = mapped_column(ForeignKey("games.id"), nullable=False)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class UserLibraryItem(Base):
+    """Phase 6: a game a user owns, imported from Steam (see
+    services/steam_client.py) - joined against at /recommendations query
+    time to exclude already-owned games (see routers/recommendations.py).
+
+    Only matched games are stored here - a Steam library entry whose appid
+    has no steam_appid match in `games` (not in our catalog at all) is
+    counted in the import summary but not persisted, since there's nothing
+    to exclude it from. Re-importing replaces this user's rows entirely
+    (see routers/profile.py import_steam_library) rather than merging, so a
+    game removed/refunded on Steam since the last import stops being
+    excluded.
+    """
+
+    __tablename__ = "user_library_items"
+    __table_args__ = (UniqueConstraint("user_id", "game_id", name="uq_library_user_game"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    game_id: Mapped[int] = mapped_column(ForeignKey("games.id"), nullable=False)
+    source: Mapped[str] = mapped_column(String, nullable=False)  # "steam" - only source for now
+    playtime_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

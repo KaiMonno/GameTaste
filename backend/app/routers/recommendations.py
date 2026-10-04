@@ -1,14 +1,18 @@
 import logging
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
+from app.models import User, UserLibraryItem
 from app.schemas import GameOut, RecommendationRequest, RecommendationResponse, RecommendationResult
+from app.services.auth import get_current_user_optional
 from app.services.llm_explanations import explain_candidates
 from app.services.scoring import (
     DIVERSITY_SHORTLIST_SIZE,
     apply_hard_filters,
+    exclude_owned_games,
     rank_candidates,
     restrict_to_curated_list,
     select_diverse_results,
@@ -26,7 +30,9 @@ RESULT_COUNT = 5
 
 @router.post("", response_model=RecommendationResponse)
 async def get_recommendations(
-    request: RecommendationRequest, db: AsyncSession = Depends(get_db)
+    request: RecommendationRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
 ) -> RecommendationResponse:
     """Hard filter -> soft score -> diverse ranked list -> Phase 4 "why
     recommended/why not" blurbs on the final 5 results only (see
@@ -37,6 +43,11 @@ async def get_recommendations(
     services/scoring.py restrict_to_curated_list) - the broader IGDB-synced
     catalog is never surfaced here.
 
+    Signed-in is optional, not required (see services/auth.py
+    get_current_user_optional) - anonymous search is unaffected. For a
+    signed-in user with an imported Steam library (Phase 6), already-owned
+    games are excluded from candidates before scoring.
+
     Explanations are best-effort: if the live Claude call fails for any
     reason, the search still returns its 5 numeric results with
     why_recommended/why_not left null rather than failing the whole request -
@@ -44,6 +55,11 @@ async def get_recommendations(
     must never depend on a live LLM call succeeding.
     """
     query = restrict_to_curated_list(apply_hard_filters(request.hard_filters))
+
+    if user is not None:
+        owned = await db.execute(select(UserLibraryItem.game_id).where(UserLibraryItem.user_id == user.id))
+        query = exclude_owned_games(query, [row[0] for row in owned.all()])
+
     result = await db.execute(query)
     candidates = list(result.scalars().all())
 

@@ -52,6 +52,12 @@ export interface WishlistItem {
   added_at: string;
 }
 
+export interface SteamImportResult {
+  total_owned: number;
+  matched: number;
+  unmatched: number;
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // Phase 5: preferences/wishlist are the only endpoints that require a signed-
@@ -81,11 +87,15 @@ export async function getFacets(): Promise<Facets> {
 
 export async function getRecommendations(
   hardFilters: HardFilters,
-  softPreferences: SoftPreferences
+  softPreferences: SoftPreferences,
+  // Optional: signed-in and sent, the backend excludes this user's Steam-
+  // imported library from results (Phase 6) - omitted or null, search
+  // behaves exactly as it did signed-out.
+  token: string | null = null
 ): Promise<RecommendationResult[]> {
   const res = await fetch(`${API_URL}/recommendations`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
     body: JSON.stringify({ hard_filters: hardFilters, soft_preferences: softPreferences }),
   });
 
@@ -138,4 +148,18 @@ export async function addToWishlist(token: string | null, gameId: number): Promi
 export async function removeFromWishlist(token: string | null, gameId: number): Promise<void> {
   const res = await fetch(`${API_URL}/wishlist/${gameId}`, { method: "DELETE", headers: authHeaders(token) });
   if (!res.ok) throw new Error(`Failed to remove game: ${res.status}`);
+}
+
+export async function importSteamLibrary(token: string | null, steamIdentifier: string): Promise<SteamImportResult> {
+  const res = await fetch(`${API_URL}/profile/steam-import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ steam_identifier: steamIdentifier }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail ?? `Steam import failed: ${res.status}`);
+  }
+  return res.json();
 }
