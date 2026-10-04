@@ -4,12 +4,6 @@ import { STEAM_OPENID_ENDPOINT, callbackUrl } from "../shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-// Steam's OpenID assertions are unsigned-discovery/"dumb mode" - it always
-// echoes this exact dummy assoc_handle rather than a real per-request one
-// (confirmed against a known-working reference implementation, not
-// guessed - see the Phase 6 OpenID commit message for the source).
-const STEAM_DUMMY_ASSOC_HANDLE = "1234567890";
-
 const CLAIMED_ID_PATTERN = /^https:\/\/steamcommunity\.com\/openid\/id\/(\d{1,20})$/;
 
 function errorRedirect(origin: string, message: string): NextResponse {
@@ -41,24 +35,35 @@ export async function GET(request: Request) {
   // the response, and before spending a network call on it - never trust
   // claimed_id/identity without the check_authentication round trip below,
   // which is what actually proves Steam signed this, not just that the
-  // shape looks right.
+  // shape looks right. assoc_handle is checked for presence only, not a
+  // specific value - an earlier version pinned it to a value taken from
+  // one third-party reference implementation, which isn't something
+  // Steam's protocol actually guarantees and isn't load-bearing for
+  // security anyway (the check_authentication round trip below is what
+  // actually proves authenticity, not this field's value).
   const claimedId = params.get("openid.claimed_id") ?? "";
   const identity = params.get("openid.identity") ?? "";
   const match = CLAIMED_ID_PATTERN.exec(claimedId);
 
-  const isWellFormed =
-    params.get("openid.ns") === "http://specs.openid.net/auth/2.0" &&
-    params.get("openid.mode") === "id_res" &&
-    params.get("openid.op_endpoint") === STEAM_OPENID_ENDPOINT &&
-    params.get("openid.return_to") === callbackUrl(origin) &&
-    params.get("openid.assoc_handle") === STEAM_DUMMY_ASSOC_HANDLE &&
-    !!params.get("openid.response_nonce") &&
-    !!params.get("openid.signed") &&
-    !!params.get("openid.sig") &&
-    !!match &&
-    identity === claimedId;
+  const checks = {
+    ns: params.get("openid.ns") === "http://specs.openid.net/auth/2.0",
+    mode: params.get("openid.mode") === "id_res",
+    op_endpoint: params.get("openid.op_endpoint") === STEAM_OPENID_ENDPOINT,
+    return_to: params.get("openid.return_to") === callbackUrl(origin),
+    assoc_handle: !!params.get("openid.assoc_handle"),
+    response_nonce: !!params.get("openid.response_nonce"),
+    signed: !!params.get("openid.signed"),
+    sig: !!params.get("openid.sig"),
+    claimed_id_format: !!match,
+    identity_matches_claimed_id: identity === claimedId,
+  };
 
-  if (!isWellFormed) {
+  if (!Object.values(checks).every(Boolean)) {
+    console.error("[steam-openid] callback validation failed", {
+      checks,
+      received: Object.fromEntries(params),
+      expected_return_to: callbackUrl(origin),
+    });
     return errorRedirect(origin, "Steam's response didn't look right - please try again");
   }
 
@@ -82,7 +87,11 @@ export async function GET(request: Request) {
         .map(([key, ...rest]) => [key, rest.join(":")])
     );
     isValid = fields.ns === "http://specs.openid.net/auth/2.0" && fields.is_valid === "true";
-  } catch {
+    if (!isValid) {
+      console.error("[steam-openid] check_authentication returned not-valid", { status: verifyResp.status, body });
+    }
+  } catch (err) {
+    console.error("[steam-openid] check_authentication request failed", err);
     return errorRedirect(origin, "Couldn't verify with Steam - please try again");
   }
 
@@ -90,7 +99,9 @@ export async function GET(request: Request) {
     return errorRedirect(origin, "Steam didn't confirm this sign-in - please try again");
   }
 
-  const steamId64 = match[1];
+  // checks.claimed_id_format already confirmed `match` is non-null above,
+  // but that's not visible to TS through the checks object indirection.
+  const steamId64 = match![1];
 
   try {
     const token = await getToken();
@@ -102,6 +113,7 @@ export async function GET(request: Request) {
 
     if (!importResp.ok) {
       const errBody = await importResp.json().catch(() => null);
+      console.error("[steam-openid] backend import failed", { status: importResp.status, errBody });
       return errorRedirect(origin, errBody?.detail ?? `Import failed: ${importResp.status}`);
     }
 
@@ -113,7 +125,8 @@ export async function GET(request: Request) {
       unmatched: String(result.unmatched),
     });
     return NextResponse.redirect(`${origin}/?${qs.toString()}`);
-  } catch {
+  } catch (err) {
+    console.error("[steam-openid] request to backend import endpoint failed", err);
     return errorRedirect(origin, "Couldn't reach the import service - please try again");
   }
 }
