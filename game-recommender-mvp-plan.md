@@ -208,11 +208,22 @@ never recommendation candidates.
     frontend route redirect.
 
 **Phase 6 — Steam import (done)**
-- API-key based (not OpenID "Sign in through Steam") - a single server-held Steam Web API key
-  resolves a pasted profile URL/vanity name/SteamID64 and pulls `GetOwnedGames`
-  (`POST /profile/steam-import`, see `backend/app/services/steam_client.py`). OpenID would still
-  need this same key for the actual game-list call, so it only saves a paste at the cost of a
-  full redirect/verify round trip - not worth it for an MVP.
+- Two ways in, one backend endpoint: a pasted profile URL/vanity name/SteamID64
+  (`POST /profile/steam-import`, see `backend/app/services/steam_client.py`), or "Sign in through
+  Steam" (OpenID 2.0 - `frontend/app/api/steam-openid/{start,callback}/route.ts`). OpenID still
+  needs the same server-held Steam Web API key for the actual `GetOwnedGames` call afterward (it
+  only replaces the paste), so the manual path shipped first as the simpler MVP cut, and OpenID
+  was added alongside it rather than instead of it - both call the same backend endpoint, since
+  OpenID's callback resolves to a verified SteamID64 that `resolve_steam_id64` already accepts as
+  a bare id with no extra backend change needed. Steam's OpenID needs no pre-registration (realm/
+  return_to are supplied live, not pre-registered like an OAuth app) - the callback locally
+  validates every security-relevant field (`ns`, `mode`, `op_endpoint` pinned to Steam's real
+  endpoint rather than whatever the response echoes, `return_to` exact match, Steam's fixed dummy
+  `assoc_handle`, `claimed_id`/`identity` well-formed and matching) *before* the actual proof: a
+  server-to-server `check_authentication` call back to Steam, trusting only `is_valid: true` from
+  that response - verified against a known-working reference implementation
+  (danielburger1337/steam-openid-php), not reconstructed from memory, since getting this wrong
+  means trusting an unverified identity claim.
   - Owned Steam appids are matched to our own `games.id` via IGDB's `external_games` endpoint
     (`external_game_source = 1` is Steam, confirmed by live query against IGDB's
     `external_game_sources` lookup table) - an id-to-id join, not fuzzy title matching. Backfilled
