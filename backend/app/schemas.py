@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -64,6 +66,27 @@ class RecommendationResult(BaseModel):
 
 class RecommendationResponse(BaseModel):
     results: list[RecommendationResult]
+
+
+class UserPreferencesIn(BaseModel):
+    """Phase 5: saved defaults for the filter form, PUT by the frontend
+    whenever the signed-in user explicitly saves their current filters.
+    """
+
+    hard_filters: HardFilters = HardFilters()
+    soft_preferences: SoftPreferences = SoftPreferences()
+
+
+class UserPreferencesOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    hard_filters: HardFilters
+    soft_preferences: SoftPreferences
+
+
+class WishlistItemOut(BaseModel):
+    game: GameOut
+    added_at: datetime
 
 
 class FacetsOut(BaseModel):

@@ -11,7 +11,7 @@
 | Background jobs & scheduling | **Celery (or Arq for a lighter async-native option) + Celery Beat / cron** | Nightly IGDB sync, HLTB matching, LLM enrichment batches — none of this should run inline on a user request. |
 | LLM | **Claude API (Anthropic)** — used two different ways | (1) Batch enrichment: story-vs-gameplay + v3 richer analysis, cached per game. (2) Online: per-candidate "why/why not" explanations on the final 5 diverse results only (not the broader 20-candidate shortlist) - **done**, see Phase 4 in mvp-plan.md. |
 | External data | **IGDB API** (Twitch OAuth), **HowLongToBeat** (via `howlongtobeatpy`, unofficial), **Steam Web API** (phase 6, official) | Core game metadata + length + backlog import. |
-| Auth (phase 5+) | **Clerk or Supabase Auth** (or Auth.js if you want to self-host) | Don't build auth yourself for an MVP; buy it. |
+| Auth | **Clerk** — **done**, see Phase 5 in mvp-plan.md | Hosted auth-as-a-service, decoupled from our self-hosted Postgres. Backend verifies Clerk's session token via its official Python SDK (`clerk-backend-api`), never sees a password. |
 | Hosting | **Vercel (frontend) + Railway or Fly.io (API, Postgres, Redis, workers)** | Cheap, fast to set up, no need for Kubernetes at this stage. Migrate to AWS/GCP only if/when scale demands it. |
 
 You could collapse this to a single-language stack (Node/TypeScript everywhere, e.g. NestJS backend + BullMQ instead of Celery) if you'd rather not context-switch languages. It's a legitimate choice — the main thing you'd lose is `howlongtobeatpy` and `rapidfuzz`, which have weaker JS equivalents. Python is the stronger pick specifically because of the scraping/matching/enrichment-heavy nature of this project.
@@ -106,14 +106,15 @@ games
 backloggd_top_100                          -- Phase 3.6, benchmark/reference only, not a scoring input
   rank (pk), backloggd_title, game_id (fk -> games, nullable), match_status, match_confidence, fetched_at
 
-users                                      -- phase 5+
-  id, auth_provider_id, created_at
+users                                       -- Phase 5, done
+  id, clerk_user_id (unique), created_at    -- mirrors just enough of the Clerk identity to hang FKs off of
 
-user_preferences                           -- phase 5+
-  user_id, default filter values (json)
+user_preferences                            -- Phase 5, done
+  user_id (pk, fk -> users), hard_filters (jsonb), soft_preferences (jsonb), updated_at
 
-wishlist                                   -- phase 5+
-  user_id, game_id, added_at
+wishlist_items                              -- Phase 5, done
+  id (pk), user_id (fk -> users), game_id (fk -> games), added_at
+  unique(user_id, game_id)
 
 user_library                               -- phase 6+
   user_id, game_id, source (steam/manual), playtime, completed_bool
@@ -132,7 +133,7 @@ user_library                               -- phase 6+
 
 ## 6. What Changes as You Move Through Phases
 
-- **Phase 5 (profile):** add `users`/`user_preferences` tables + hosted auth (Clerk/Supabase). No architecture change otherwise.
+- **Phase 5 (profile) — done:** added `users`/`user_preferences`/`wishlist_items` tables + Clerk as hosted auth. No other architecture change - `/recommendations` and the rest of the core loop are unaffected and still fully usable signed-out.
 - **Phase 6 (Steam import):** add a Steam import worker job (`GetOwnedGames` via Steam Web API) that populates `user_library` and is joined against at query time to exclude owned/played titles.
 - **Phase 7 (PC specs / consoles / controller):** these become additional **hard filters** at query time — no new infra, just more filter logic + possibly a small `pc_specs`/`min_requirements` field sourced from Steam if available.
 - **v2 similarity:** swap "similarity to X" from IGDB's `similar_games` list to a proper `pgvector` cosine-similarity query once embeddings are populated — this is a drop-in replacement for that one scoring factor, not a rearchitecture.

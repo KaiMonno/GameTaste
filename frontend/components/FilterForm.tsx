@@ -6,6 +6,14 @@ import { getFacets, type HardFilters, type SoftPreferences } from "@/lib/api";
 interface Props {
   onSubmit: (hardFilters: HardFilters, softPreferences: SoftPreferences) => void;
   loading: boolean;
+  // Phase 5: a signed-in user's saved defaults, loaded async by the parent
+  // page from GET /profile/preferences - undefined while that load is in
+  // flight (or the user is signed out), so the form keeps its own blank
+  // defaults rather than flashing saved values in after the fact.
+  initialHardFilters?: HardFilters;
+  initialSoftPreferences?: SoftPreferences;
+  onSaveDefaults?: (hardFilters: HardFilters, softPreferences: SoftPreferences) => void;
+  saveDefaultsState?: "idle" | "saving" | "saved" | "error";
 }
 
 function toggle(list: string[], value: string): string[] {
@@ -44,7 +52,14 @@ function PillToggle({
   );
 }
 
-export default function FilterForm({ onSubmit, loading }: Props) {
+export default function FilterForm({
+  onSubmit,
+  loading,
+  initialHardFilters,
+  initialSoftPreferences,
+  onSaveDefaults,
+  saveDefaultsState = "idle",
+}: Props) {
   const [platformOptions, setPlatformOptions] = useState<string[]>([]);
   const [genreOptions, setGenreOptions] = useState<string[]>([]);
   const [facetsError, setFacetsError] = useState<string | null>(null);
@@ -64,26 +79,45 @@ export default function FilterForm({ onSubmit, loading }: Props) {
       .catch((err) => setFacetsError(err instanceof Error ? err.message : "Failed to load filter options"));
   }, []);
 
+  // Pre-fill once saved defaults arrive from the parent - keyed so this only
+  // fires the first time they show up, not on every parent re-render (which
+  // would otherwise stomp on whatever the user has since typed/toggled).
+  useEffect(() => {
+    if (!initialHardFilters || !initialSoftPreferences) return;
+    setGenres(initialHardFilters.include_genres);
+    setPlatforms(initialHardFilters.platforms);
+    setRequireMultiplayer(initialHardFilters.require_multiplayer);
+    setTargetLengthHours(
+      initialSoftPreferences.target_length_hours != null ? String(initialSoftPreferences.target_length_hours) : ""
+    );
+    setTargetStoryGameplayRatio(
+      initialSoftPreferences.target_story_gameplay_ratio != null
+        ? String(initialSoftPreferences.target_story_gameplay_ratio)
+        : ""
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialHardFilters, initialSoftPreferences]);
+
+  function currentValues(): [HardFilters, SoftPreferences] {
+    return [
+      { include_genres: genres, exclude_genres: [], platforms, require_multiplayer: requireMultiplayer },
+      {
+        target_length_hours: targetLengthHours ? Number(targetLengthHours) : null,
+        target_story_gameplay_ratio: targetStoryGameplayRatio ? Number(targetStoryGameplayRatio) : null,
+        similar_to_game_id: null,
+      },
+    ];
+  }
+
+  function handleSaveDefaults() {
+    if (!onSaveDefaults) return;
+    const [hardFilters, softPreferences] = currentValues();
+    onSaveDefaults(hardFilters, softPreferences);
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-
-    const hardFilters: HardFilters = {
-      // Mobile platforms and DLC/expansions are always excluded server-side -
-      // not a user-facing option, see backend/app/services/scoring.py.
-      include_genres: genres,
-      exclude_genres: [],
-      platforms,
-      require_multiplayer: requireMultiplayer,
-    };
-
-    const softPreferences: SoftPreferences = {
-      target_length_hours: targetLengthHours ? Number(targetLengthHours) : null,
-      target_story_gameplay_ratio: targetStoryGameplayRatio ? Number(targetStoryGameplayRatio) : null,
-      // "Similar to a specific game" needs a game-search UI to pick a
-      // reference game - not built yet, left for a later pass.
-      similar_to_game_id: null,
-    };
-
+    const [hardFilters, softPreferences] = currentValues();
     onSubmit(hardFilters, softPreferences);
   }
 
@@ -156,13 +190,32 @@ export default function FilterForm({ onSubmit, loading }: Props) {
         </label>
       </div>
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="rounded bg-gray-900 px-4 py-2 text-white disabled:opacity-50"
-      >
-        {loading ? "Finding games..." : "Get recommendations"}
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={loading}
+          className="rounded bg-gray-900 px-4 py-2 text-white disabled:opacity-50"
+        >
+          {loading ? "Finding games..." : "Get recommendations"}
+        </button>
+
+        {onSaveDefaults && (
+          <button
+            type="button"
+            onClick={handleSaveDefaults}
+            disabled={saveDefaultsState === "saving"}
+            className="text-sm text-gray-600 underline hover:text-gray-900 disabled:opacity-50"
+          >
+            {saveDefaultsState === "saved"
+              ? "Saved as default"
+              : saveDefaultsState === "saving"
+                ? "Saving..."
+                : saveDefaultsState === "error"
+                  ? "Couldn't save - try again"
+                  : "Save as my default filters"}
+          </button>
+        )}
+      </div>
     </form>
   );
 }

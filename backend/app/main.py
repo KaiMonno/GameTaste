@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import games, recommendations
+from app.routers import games, profile, recommendations, wishlist
 
 app = FastAPI(title="GameTaste API")
 
@@ -19,6 +19,8 @@ app.add_middleware(
 
 app.include_router(recommendations.router)
 app.include_router(games.router)
+app.include_router(profile.router)
+app.include_router(wishlist.router)
 
 
 @app.get("/health")

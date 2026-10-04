@@ -13,6 +13,9 @@ anthropic==0.34.2
 redis==5.0.8
 python-dotenv==1.0.1
 
+# Phase 5: verifies Clerk-issued session tokens server-side - see services/auth.py
+clerk-backend-api==7.0.0
+
 # Test-only deps. pytest-asyncio is needed for the integration tests in
 # tests/test_recommendations_integration.py, which exercise the real dev DB
 # (async SQLAlchemy session) rather than mocking it - see that file's

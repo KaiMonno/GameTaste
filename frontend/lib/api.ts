@@ -42,7 +42,27 @@ export interface Facets {
   platforms: string[];
 }
 
+export interface UserPreferences {
+  hard_filters: HardFilters;
+  soft_preferences: SoftPreferences;
+}
+
+export interface WishlistItem {
+  game: GameOut;
+  added_at: string;
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+// Phase 5: preferences/wishlist are the only endpoints that require a signed-
+// in user - callers get the token from Clerk's useAuth().getToken() (client
+// components) and pass it through here, since this module isn't itself a
+// component and can't call hooks. A null/missing token on a protected call
+// surfaces as the backend's 401, not a thrown error here - the caller
+// decides how to handle "not signed in".
+function authHeaders(token: string | null): HeadersInit {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 // Genre/platform values actually present in the synced catalog - drives the
 // filter form's options so they never drift from real data (mobile platforms
@@ -75,4 +95,47 @@ export async function getRecommendations(
 
   const data = await res.json();
   return data.results;
+}
+
+export async function getPreferences(token: string | null): Promise<UserPreferences | null> {
+  const res = await fetch(`${API_URL}/profile/preferences`, { headers: authHeaders(token) });
+
+  if (res.status === 401) return null;
+  if (!res.ok) throw new Error(`Failed to load saved preferences: ${res.status}`);
+
+  return res.json();
+}
+
+export async function savePreferences(
+  token: string | null,
+  hardFilters: HardFilters,
+  softPreferences: SoftPreferences
+): Promise<UserPreferences> {
+  const res = await fetch(`${API_URL}/profile/preferences`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ hard_filters: hardFilters, soft_preferences: softPreferences }),
+  });
+
+  if (!res.ok) throw new Error(`Failed to save preferences: ${res.status}`);
+  return res.json();
+}
+
+export async function getWishlist(token: string | null): Promise<WishlistItem[]> {
+  const res = await fetch(`${API_URL}/wishlist`, { headers: authHeaders(token) });
+
+  if (res.status === 401) return [];
+  if (!res.ok) throw new Error(`Failed to load wishlist: ${res.status}`);
+
+  return res.json();
+}
+
+export async function addToWishlist(token: string | null, gameId: number): Promise<void> {
+  const res = await fetch(`${API_URL}/wishlist/${gameId}`, { method: "POST", headers: authHeaders(token) });
+  if (!res.ok) throw new Error(`Failed to save game: ${res.status}`);
+}
+
+export async function removeFromWishlist(token: string | null, gameId: number): Promise<void> {
+  const res = await fetch(`${API_URL}/wishlist/${gameId}`, { method: "DELETE", headers: authHeaders(token) });
+  if (!res.ok) throw new Error(`Failed to remove game: ${res.status}`);
 }

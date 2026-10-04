@@ -17,6 +17,16 @@ class Settings(BaseSettings):
 
     steam_api_key: str = ""
 
+    # Phase 5: Clerk handles identity/sessions, we only verify the token it
+    # issues - see services/auth.py. clerk_jwt_key (the PEM public key from
+    # the Clerk dashboard) enables networkless verification; left empty, the
+    # SDK falls back to a network call to Clerk per request, which still
+    # works but adds latency. clerk_authorized_parties guards against a
+    # token issued for a different frontend being replayed against this API.
+    clerk_secret_key: str = ""
+    clerk_jwt_key: str = ""
+    clerk_authorized_parties: str = "http://localhost:3000"
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -182,8 +182,30 @@ never recommendation candidates.
     monkeypatched failure, not just assumed.
   - No frontend changes needed - `ResultsList.tsx` already rendered these fields, just never had data.
 
-**Phase 5 — Basic profile**
-- Accounts, saved preference defaults, wishlist (simple save-a-game-to-list)
+**Phase 5 — Basic profile (done)**
+- Accounts via Clerk (hosted auth - sign-in/sign-up UI, sessions; see
+  `frontend/middleware.ts`, `frontend/app/layout.tsx`). The backend never
+  sees passwords, only verifies the session token Clerk's frontend SDK
+  attaches, via Clerk's own official Python SDK (`clerk-backend-api`) - see
+  `backend/app/services/auth.py`. A lightweight `users` table mirrors just
+  enough of the Clerk identity (the opaque `clerk_user_id`) to hang our own
+  FKs off of, created lazily on first authenticated request rather than via
+  a webhook sync.
+  - Saved preference defaults: `user_preferences` table, one JSONB row per
+    user mirroring the `HardFilters`/`SoftPreferences` schemas directly
+    (`GET`/`PUT /profile/preferences`). The filter form pre-fills from this
+    on sign-in and offers a "Save as my default filters" button - purely a
+    convenience default for the next search, not a scoring input.
+  - Wishlist: `wishlist_items` table, unique per `(user_id, game_id)` so
+    saving twice is a no-op rather than a duplicate row (`GET`/`POST`/
+    `DELETE /wishlist/{game_id}`). A "Save to wishlist" action appears on
+    each recommendation result when signed in; `/wishlist` is a new page
+    listing saved games with a remove action.
+  - All three endpoints are best-effort gated: signed-out users can still
+    browse and get recommendations exactly as before (Phase 5 added
+    nothing gating the core loop) - only the profile/wishlist actions
+    themselves require a session, enforced server-side (401), not by a
+    frontend route redirect.
 
 **Phase 6 — Steam import**
 - OAuth or API-key based Steam library pull → auto-exclude owned/played games from recommendations

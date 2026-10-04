@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -145,4 +145,53 @@ class CuratedListGame(Base):
     __tablename__ = "curated_list_games"
 
     game_id: Mapped[int] = mapped_column(ForeignKey("games.id"), primary_key=True)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class User(Base):
+    """Phase 5: lightweight mirror of a Clerk identity, just enough to hang
+    our own FKs (preferences, wishlist) off of. Clerk is the source of truth
+    for email/profile/password - we never store credentials here, only the
+    opaque clerk_user_id and a get-or-create row created lazily on first
+    authenticated request (see services/auth.py get_or_create_user).
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    clerk_user_id: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class UserPreferences(Base):
+    """Saved default filter/preference values for a user's next search -
+    one row per user. Stored as JSONB mirroring the HardFilters/
+    SoftPreferences schemas directly (see schemas.py) rather than as
+    individual columns, since those schemas are still evolving and this is
+    just a saved draft the frontend pre-fills the form with, not a scoring
+    input read by services/scoring.py.
+    """
+
+    __tablename__ = "user_preferences"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    hard_filters: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    soft_preferences: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class WishlistItem(Base):
+    """A user's saved-for-later game. Unique per (user_id, game_id) - saving
+    the same game twice is a no-op, not a duplicate row (see
+    routers/wishlist.py add_to_wishlist).
+    """
+
+    __tablename__ = "wishlist_items"
+    __table_args__ = (UniqueConstraint("user_id", "game_id", name="uq_wishlist_user_game"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    game_id: Mapped[int] = mapped_column(ForeignKey("games.id"), nullable=False)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

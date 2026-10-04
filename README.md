@@ -112,9 +112,12 @@ worked through while first building this (see git history / commit messages if c
    [backend/app/services/llm_explanations.py](backend/app/services/llm_explanations.py) into the
    `/recommendations` route for the "why you'll like it" blurbs (Phase 4).
 
-5. **Not yet:** accounts, wishlist, Steam import, Celery/cron scheduling. Per the MVP plan these
-   come after the core loop is validated — the sync/match/enrich scripts are meant to be run by
-   hand for now, then promoted to a scheduled job once you trust the pipeline.
+5. **Accounts, saved preference defaults, and wishlist (Phase 5) are done** — Clerk handles
+   sign-in/sign-up; set `CLERK_SECRET_KEY` (backend) and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` +
+   `CLERK_SECRET_KEY` (frontend) from your own Clerk dashboard to use them locally. **Not yet:**
+   Steam import, Celery/cron scheduling. Per the MVP plan those come after the core loop is
+   validated — the sync/match/enrich scripts are meant to be run by hand for now, then promoted
+   to a scheduled job once you trust the pipeline.
 
 ## Notes on what's deliberately stubbed
 
@@ -123,4 +126,3 @@ worked through while first building this (see git history / commit messages if c
   actually running these on a schedule and need retries/monitoring.
 - No `pgvector`/embeddings column — that's a v2 addition per the architecture doc, add it as a
   new Alembic migration when you actually build similarity search.
-- No auth — Phase 5+, add `users`/`user_preferences` tables and a hosted auth provider then.
