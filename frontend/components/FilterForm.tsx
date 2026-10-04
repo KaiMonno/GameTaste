@@ -70,6 +70,15 @@ export default function FilterForm({
   const [targetLengthHours, setTargetLengthHours] = useState<string>("");
   const [targetStoryGameplayRatio, setTargetStoryGameplayRatio] = useState<string>("");
 
+  // Tracks edits made after the last "Saved as default" - without this, the
+  // button would keep reading "Saved as default" even once it no longer
+  // reflects what's in the form. Reset on every new saveDefaultsState from
+  // the parent (a fresh save cycle), set on any field change in between.
+  const [dirtySinceSave, setDirtySinceSave] = useState(false);
+  useEffect(() => {
+    setDirtySinceSave(false);
+  }, [saveDefaultsState]);
+
   useEffect(() => {
     getFacets()
       .then((facets) => {
@@ -115,6 +124,8 @@ export default function FilterForm({
     onSaveDefaults(hardFilters, softPreferences);
   }
 
+  const displaySaveState = dirtySinceSave && saveDefaultsState === "saved" ? "idle" : saveDefaultsState;
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const [hardFilters, softPreferences] = currentValues();
@@ -128,7 +139,10 @@ export default function FilterForm({
         <input
           type="number"
           value={targetLengthHours}
-          onChange={(e) => setTargetLengthHours(e.target.value)}
+          onChange={(e) => {
+            setTargetLengthHours(e.target.value);
+            setDirtySinceSave(true);
+          }}
           className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
           placeholder="e.g. 15"
         />
@@ -142,7 +156,10 @@ export default function FilterForm({
           min={0}
           max={100}
           value={targetStoryGameplayRatio}
-          onChange={(e) => setTargetStoryGameplayRatio(e.target.value)}
+          onChange={(e) => {
+            setTargetStoryGameplayRatio(e.target.value);
+            setDirtySinceSave(true);
+          }}
           className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
           placeholder="e.g. 70 for story-heavy"
         />
@@ -159,7 +176,14 @@ export default function FilterForm({
         <p className="text-xs text-gray-500">Leave empty to include all platforms.</p>
         <div className="mt-2 max-h-48 overflow-y-auto rounded border border-gray-200 p-2">
           {platformOptions.length > 0 ? (
-            <PillToggle options={platformOptions} selected={platforms} onChange={setPlatforms} />
+            <PillToggle
+              options={platformOptions}
+              selected={platforms}
+              onChange={(next) => {
+                setPlatforms(next);
+                setDirtySinceSave(true);
+              }}
+            />
           ) : (
             <p className="text-sm text-gray-400">Loading platforms...</p>
           )}
@@ -171,7 +195,14 @@ export default function FilterForm({
         <p className="text-xs text-gray-500">Leave empty to include all genres.</p>
         <div className="mt-2 max-h-48 overflow-y-auto rounded border border-gray-200 p-2">
           {genreOptions.length > 0 ? (
-            <PillToggle options={genreOptions} selected={genres} onChange={setGenres} />
+            <PillToggle
+              options={genreOptions}
+              selected={genres}
+              onChange={(next) => {
+                setGenres(next);
+                setDirtySinceSave(true);
+              }}
+            />
           ) : (
             <p className="text-sm text-gray-400">Loading genres...</p>
           )}
@@ -183,7 +214,10 @@ export default function FilterForm({
           type="checkbox"
           id="requireMultiplayer"
           checked={requireMultiplayer}
-          onChange={(e) => setRequireMultiplayer(e.target.checked)}
+          onChange={(e) => {
+            setRequireMultiplayer(e.target.checked);
+            setDirtySinceSave(true);
+          }}
         />
         <label htmlFor="requireMultiplayer" className="text-sm">
           Require multiplayer
@@ -203,14 +237,14 @@ export default function FilterForm({
           <button
             type="button"
             onClick={handleSaveDefaults}
-            disabled={saveDefaultsState === "saving"}
+            disabled={displaySaveState === "saving"}
             className="text-sm text-gray-600 underline hover:text-gray-900 disabled:opacity-50"
           >
-            {saveDefaultsState === "saved"
+            {displaySaveState === "saved"
               ? "Saved as default"
-              : saveDefaultsState === "saving"
+              : displaySaveState === "saving"
                 ? "Saving..."
-                : saveDefaultsState === "error"
+                : displaySaveState === "error"
                   ? "Couldn't save - try again"
                   : "Save as my default filters"}
           </button>
