@@ -244,8 +244,32 @@ never recommendation candidates.
     exclusion logic, only the two endpoints and a button on each result (`components/
     ResultsList.tsx`).
 
-**Phase 7 — Extended profile**
-- PC specs (compare against IGDB/Steam min-spec data if available), consoles owned, emulator support, controller availability — these affect *filtering* (can this person even run/play this game) more than *matching*, so they slot in as additional hard filters once the core engine exists
+**Phase 7 — Extended profile (scoped down to what has real data; partially done)**
+- Originally scoped as four sub-features: PC specs, consoles owned, emulator support, controller
+  availability. Checked IGDB's actual schema live before building anything (`platforms`,
+  `platform_versions`, `multiplayer_modes`) - confirmed none of PC min/recommended specs,
+  controller support, or emulator compatibility exist anywhere in IGDB as structured data. PC
+  specs technically exist somewhere (Steam store pages), but only via new, fragile scraping -
+  same "don't estimate what has no ground truth" call as difficulty/content warnings in Phase 1.
+  Deferred all three rather than build on a guess.
+  - **Platforms/consoles owned - done.** The one sub-feature backed by data already synced
+    (`games.platforms`, from IGDB). A persistent, always-on exclusion - not a per-search filter
+    like `HardFilters.platforms` (which this is additive to, not a replacement for) - the same
+    "set once in your profile, applies to every future search automatically" pattern as Steam
+    library exclusion (Phase 6). `owned_platforms` column on `user_preferences`, its own
+    `GET`/`PUT /profile/owned-platforms` endpoints deliberately separate from
+    `GET`/`PUT /profile/preferences` (that endpoint replaces `hard_filters`/`soft_preferences`
+    wholesale on every save - folding an unrelated field in would mean saving one from one page
+    silently clobbers the other's last-saved value). `services/scoring.py
+    exclude_unplayable_platforms` wired into `/recommendations` the same way Steam exclusion is -
+    optional signed-in user, anonymous search unaffected.
+  - The platform picker (home page filter form, and now this profile section) also got a UX
+    pass in the same batch of work: all 26 IGDB platform values were a flat, equal-weight list
+    (Dreamcast next to PlayStation 5) - split into an always-shown primary set (PC, Mac, Linux,
+    PlayStation 5/4, Xbox Series X|S/One, Nintendo Switch - current-gen + Switch + the PC
+    ecosystem) with everything else behind "View more platforms", auto-expanding if a saved
+    selection includes one of the hidden ones. Extracted into a shared `PlatformPicker` component
+    once a second page needed the identical picker, rather than duplicating it.
 
 **Phase 8 (stretch) — Backloggd import**
 - Only if a reliable, ToS-acceptable path exists; otherwise leave as manual CSV import from the user

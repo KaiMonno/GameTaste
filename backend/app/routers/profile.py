@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.models import Game, User, UserLibraryItem, UserPreferences
 from app.schemas import (
+    OwnedPlatformsIn,
+    OwnedPlatformsOut,
     SteamImportRequest,
     SteamImportResult,
     SteamStatusOut,
@@ -45,6 +47,39 @@ async def save_preferences(
     await db.commit()
     await db.refresh(prefs)
     return prefs
+
+
+@router.get("/owned-platforms", response_model=OwnedPlatformsOut)
+async def get_owned_platforms(
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> OwnedPlatformsOut:
+    prefs = await db.get(UserPreferences, user.id)
+    return OwnedPlatformsOut(owned_platforms=prefs.owned_platforms if prefs is not None else [])
+
+
+@router.put("/owned-platforms", response_model=OwnedPlatformsOut)
+async def save_owned_platforms(
+    body: OwnedPlatformsIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OwnedPlatformsOut:
+    """Deliberately separate from PUT /profile/preferences - that endpoint
+    replaces hard_filters/soft_preferences wholesale on every call (see
+    save_preferences above), and folding an unrelated field into the same
+    request/response shape would mean saving one from one page silently
+    clobbers the other's last-saved value unless both pages always
+    round-tripped the full state. This only ever touches owned_platforms.
+    """
+    prefs = await db.get(UserPreferences, user.id)
+    if prefs is None:
+        prefs = UserPreferences(user_id=user.id)
+        db.add(prefs)
+
+    prefs.owned_platforms = body.owned_platforms
+
+    await db.commit()
+    await db.refresh(prefs)
+    return OwnedPlatformsOut(owned_platforms=prefs.owned_platforms)
 
 
 @router.post("/steam-import", response_model=SteamImportResult)

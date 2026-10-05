@@ -117,8 +117,10 @@ backloggd_top_100                          -- Phase 3.6, benchmark/reference onl
 users                                       -- Phase 5, done
   id, clerk_user_id (unique), created_at    -- mirrors just enough of the Clerk identity to hang FKs off of
 
-user_preferences                            -- Phase 5, done
-  user_id (pk, fk -> users), hard_filters (jsonb), soft_preferences (jsonb), updated_at
+user_preferences                            -- Phase 5, done (owned_platforms added Phase 7)
+  user_id (pk, fk -> users), hard_filters (jsonb), soft_preferences (jsonb)
+  owned_platforms (text[]) -- persistent exclusion, not part of hard_filters - see Phase 7
+  updated_at
 
 wishlist_items                              -- Phase 5, done
   id (pk), user_id (fk -> users), game_id (fk -> games), added_at
@@ -147,5 +149,5 @@ user_library_items                          -- Phase 6, done
 
 - **Phase 5 (profile) — done:** added `users`/`user_preferences`/`wishlist_items` tables + Clerk as hosted auth. No other architecture change - `/recommendations` and the rest of the core loop are unaffected and still fully usable signed-out.
 - **Phase 6 (Steam import) — done:** added `games.steam_appid` + `user_library_items`. A user-triggered `POST /profile/steam-import` (not a scheduled worker job - Steam's data is pulled on demand when the user asks, not synced nightly) calls `GetOwnedGames` and is joined against at `/recommendations` query time to exclude owned titles for a signed-in user; anonymous search is unaffected. Also added a minimal manual "Already played" button (`POST`/`DELETE /profile/played/{game_id}`) that writes/removes a `source="manual"` row in the same table - no new exclusion logic needed, since exclusion only checks whether a row exists, not its source.
-- **Phase 7 (PC specs / consoles / controller):** these become additional **hard filters** at query time — no new infra, just more filter logic + possibly a small `pc_specs`/`min_requirements` field sourced from Steam if available.
+- **Phase 7 (extended profile) — scoped down, partially done:** PC specs/emulator support/controller availability all turned out to have no structured data anywhere in IGDB (confirmed live, not assumed) and were deferred rather than built on a guess. Platforms/consoles owned - the one sub-feature with real data already synced (`games.platforms`) - is done: `user_preferences.owned_platforms`, its own endpoints (kept separate from the existing preferences endpoint to avoid one save silently clobbering the other), joined against at `/recommendations` query time the same way Steam-owned exclusion (Phase 6) is - optional signed-in user, anonymous search unaffected.
 - **v2 similarity:** swap "similarity to X" from IGDB's `similar_games` list to a proper `pgvector` cosine-similarity query once embeddings are populated — this is a drop-in replacement for that one scoring factor, not a rearchitecture.

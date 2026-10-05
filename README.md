@@ -6,12 +6,15 @@ reasoning behind every decision - both are kept current, phase by phase, as the 
 truth for *why* something works the way it does, not just *what* the code does.
 
 **Current state: Phases 1-6 are done**, plus a minimal manual "Already played" exclusion button
-(folded into Phase 6, see mvp-plan.md). That's the full core loop (hard filters → soft-score
-ranking → diversity selection → live LLM "why you'll like it" blurbs) *and* the full profile
-system (Clerk accounts, saved preference defaults, wishlist, Steam library import via OpenID
-sign-in or a pasted profile URL, manual "Already played" marking) - all working end to end,
-signed-in or anonymous. Not yet: Phase 7 (extended profile / PC specs), Phase 8 (Backloggd
-import), and Celery/cron scheduling (the sync/enrich/backfill scripts are still run by hand).
+(folded into Phase 6) and the "platforms you own" piece of Phase 7 (see mvp-plan.md - PC specs/
+emulator support/controller availability, Phase 7's other three sub-features, were checked
+against IGDB's real schema and found to have no structured data anywhere, so they're deferred
+rather than built on a guess). That's the full core loop (hard filters → soft-score ranking →
+diversity selection → live LLM "why you'll like it" blurbs) *and* the full profile system (Clerk
+accounts, saved preference defaults, wishlist, Steam library import via OpenID sign-in or a
+pasted profile URL, manual "Already played" marking, owned-platforms exclusion) - all working
+end to end, signed-in or anonymous. Not yet: the rest of Phase 7, Phase 8 (Backloggd import), and
+Celery/cron scheduling (the sync/enrich/backfill scripts are still run by hand).
 If you're picking this up fresh, read **"Gotchas found the hard way"** below before you start -
 every one of them cost real debugging time once already.
 
@@ -189,15 +192,18 @@ context/tuning but isn't what `/recommendations` reads from.
    Expect some HLTB misses — it has no official API (see mvp-plan.md §1/§5); check the logs for
    unmatched titles rather than assuming 100% coverage.
 
-5. **Accounts/wishlist/preferences (Phase 5) and Steam import (Phase 6) are both done** and need
-   no further wiring - just the Clerk/Steam keys from "Get your own API keys/accounts" above.
-   Once those are set (**and the backend restarted** - see Gotchas), sign in via the header, and:
+5. **Accounts/wishlist/preferences (Phase 5), Steam import (Phase 6), and owned-platforms
+   exclusion (Phase 7) are all done** and need no further wiring - just the Clerk/Steam keys from
+   "Get your own API keys/accounts" above. Once those are set (**and the backend restarted** -
+   see Gotchas), sign in via the header, and:
    - Save default filters from the home page, see your wishlist at `/wishlist`.
-   - Import your Steam library (OpenID "Sign in through Steam" or a pasted profile URL) and
-     manually mark individual games "Already played" from `/profile` - both exclude from future
-     `/recommendations` results the same way.
-   **Not yet:** Celery/cron scheduling — the sync/match/enrich scripts are meant to be run by
-   hand for now, then promoted to a scheduled job once you trust the pipeline.
+   - On `/profile`: import your Steam library (OpenID "Sign in through Steam" or a pasted
+     profile URL), manually mark individual games "Already played", and set which platforms you
+     own - all three exclude from future `/recommendations` results the same way.
+   **Not yet:** PC specs/emulator support/controller availability (the rest of Phase 7 - no
+   structured data exists for any of them, see mvp-plan.md), Phase 8 (Backloggd import), and
+   Celery/cron scheduling — the sync/match/enrich scripts are meant to be run by hand for now,
+   then promoted to a scheduled job once you trust the pipeline.
 
 ## Notes on what's deliberately stubbed
 

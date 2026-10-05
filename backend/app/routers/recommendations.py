@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-from app.models import User, UserLibraryItem
+from app.models import User, UserLibraryItem, UserPreferences
 from app.schemas import GameOut, RecommendationRequest, RecommendationResponse, RecommendationResult
 from app.services.auth import get_current_user_optional
 from app.services.llm_explanations import explain_candidates
@@ -13,6 +13,7 @@ from app.services.scoring import (
     DIVERSITY_SHORTLIST_SIZE,
     apply_hard_filters,
     exclude_owned_games,
+    exclude_unplayable_platforms,
     rank_candidates,
     restrict_to_curated_list,
     select_diverse_results,
@@ -46,7 +47,8 @@ async def get_recommendations(
     Signed-in is optional, not required (see services/auth.py
     get_current_user_optional) - anonymous search is unaffected. For a
     signed-in user with an imported Steam library (Phase 6), already-owned
-    games are excluded from candidates before scoring.
+    games are excluded from candidates before scoring; for one who's set
+    owned platforms (Phase 7), games unplayable on any of them are too.
 
     Explanations are best-effort: if the live Claude call fails for any
     reason, the search still returns its 5 numeric results with
@@ -59,6 +61,10 @@ async def get_recommendations(
     if user is not None:
         owned = await db.execute(select(UserLibraryItem.game_id).where(UserLibraryItem.user_id == user.id))
         query = exclude_owned_games(query, [row[0] for row in owned.all()])
+
+        prefs = await db.get(UserPreferences, user.id)
+        if prefs is not None:
+            query = exclude_unplayable_platforms(query, prefs.owned_platforms)
 
     result = await db.execute(query)
     candidates = list(result.scalars().all())

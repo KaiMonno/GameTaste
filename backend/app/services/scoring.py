@@ -174,6 +174,20 @@ def exclude_owned_games(query: Select, owned_game_ids: list[int]) -> Select:
     return query.where(Game.id.not_in(owned_game_ids))
 
 
+def exclude_unplayable_platforms(query: Select, owned_platforms: list[str]) -> Select:
+    """Phase 7: drop games not available on any platform the signed-in
+    user actually owns (see routers/recommendations.py, models.py
+    UserPreferences.owned_platforms) - a persistent profile setting, not
+    the per-search HardFilters.platforms field (which this is additional
+    to, not a replacement for - both apply together if both are set).
+    A no-op for an empty list, same convention as every other platform
+    filter in this app: unset means no filter, not "owns nothing".
+    """
+    if not owned_platforms:
+        return query
+    return query.where(Game.platforms.overlap(owned_platforms))
+
+
 def _distance_score(value: float | None, target: float | None, scale: float) -> float:
     """1.0 = exact match, decaying toward 0 as |value - target| grows past `scale`.
     Returns a neutral 0.5 when either side is missing data, so missing enrichment

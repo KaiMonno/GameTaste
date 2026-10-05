@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getFacets, type HardFilters, type SoftPreferences } from "@/lib/api";
+import PlatformPicker, { PillToggle, PRIMARY_PLATFORMS } from "@/components/PlatformPicker";
 
 interface Props {
   onSubmit: (hardFilters: HardFilters, softPreferences: SoftPreferences) => void;
@@ -14,59 +15,6 @@ interface Props {
   initialSoftPreferences?: SoftPreferences;
   onSaveDefaults?: (hardFilters: HardFilters, softPreferences: SoftPreferences) => void;
   saveDefaultsState?: "idle" | "saving" | "saved" | "error";
-}
-
-function toggle(list: string[], value: string): string[] {
-  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
-}
-
-// Shown by default in the platform picker - current-gen consoles + Switch
-// + the PC ecosystem, what most players are actually asking about. Exact
-// strings must match IGDB's platform names (see GET /games/facets) -
-// "PC (Microsoft Windows)", not "PC". Everything else (older consoles,
-// handhelds, VR headsets, ...) is real but far more niche, and sits behind
-// "View more platforms" instead of cluttering the default view.
-const PRIMARY_PLATFORMS = [
-  "PC (Microsoft Windows)",
-  "Mac",
-  "Linux",
-  "PlayStation 5",
-  "PlayStation 4",
-  "Xbox Series X|S",
-  "Xbox One",
-  "Nintendo Switch",
-];
-
-function PillToggle({
-  options,
-  selected,
-  onChange,
-}: {
-  options: string[];
-  selected: string[];
-  onChange: (next: string[]) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {options.map((option) => {
-        const active = selected.includes(option);
-        return (
-          <button
-            key={option}
-            type="button"
-            onClick={() => onChange(toggle(selected, option))}
-            className={`rounded-full border px-3 py-1 text-sm ${
-              active
-                ? "border-gray-900 bg-gray-900 text-white"
-                : "border-gray-300 bg-white text-gray-700"
-            }`}
-          >
-            {option}
-          </button>
-        );
-      })}
-    </div>
-  );
 }
 
 export default function FilterForm({
@@ -200,35 +148,16 @@ export default function FilterForm({
         <p className="text-xs text-gray-500">Leave empty to include all platforms.</p>
         <div className="mt-2 rounded border border-gray-200 p-2">
           {platformOptions.length > 0 ? (
-            (() => {
-              const primary = PRIMARY_PLATFORMS.filter((p) => platformOptions.includes(p));
-              const secondary = platformOptions.filter((p) => !PRIMARY_PLATFORMS.includes(p));
-              const handleChange = (next: string[]) => {
+            <PlatformPicker
+              options={platformOptions}
+              selected={platforms}
+              onChange={(next) => {
                 setPlatforms(next);
                 setDirtySinceSave(true);
-              };
-              return (
-                <>
-                  <PillToggle options={primary} selected={platforms} onChange={handleChange} />
-                  {secondary.length > 0 && (
-                    <>
-                      {showAllPlatforms && (
-                        <div className="mt-2">
-                          <PillToggle options={secondary} selected={platforms} onChange={handleChange} />
-                        </div>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setShowAllPlatforms((prev) => !prev)}
-                        className="mt-2 text-xs text-gray-500 underline hover:text-gray-900"
-                      >
-                        {showAllPlatforms ? "View fewer platforms" : "View more platforms"}
-                      </button>
-                    </>
-                  )}
-                </>
-              );
-            })()
+              }}
+              showAll={showAllPlatforms}
+              onToggleShowAll={() => setShowAllPlatforms((prev) => !prev)}
+            />
           ) : (
             <p className="text-sm text-gray-400">Loading platforms...</p>
           )}

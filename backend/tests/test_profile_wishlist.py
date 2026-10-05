@@ -18,7 +18,7 @@ from sqlalchemy import delete, select
 from app.models import Game, User, UserLibraryItem, UserPreferences, WishlistItem
 from app.routers import profile as profile_router
 from app.routers import wishlist as wishlist_router
-from app.schemas import HardFilters, SoftPreferences, UserPreferencesIn
+from app.schemas import HardFilters, OwnedPlatformsIn, SoftPreferences, UserPreferencesIn
 
 TEST_CLERK_USER_ID = "test_clerk_user_phase5"
 
@@ -179,3 +179,97 @@ async def test_unmark_as_played_removes_the_exclusion(session_factory, test_user
 async def test_unmark_as_played_when_absent_is_a_no_op(session_factory, test_user, any_game_id):
     async with session_factory() as session:
         await profile_router.unmark_as_played(any_game_id, user=test_user, db=session)  # must not raise
+
+
+async def test_owned_platforms_empty_when_never_saved(session_factory, test_user):
+    async with session_factory() as session:
+        result = await profile_router.get_owned_platforms(user=test_user, db=session)
+    assert result.owned_platforms == []
+
+
+async def test_owned_platforms_round_trip(session_factory, test_user):
+    async with session_factory() as session:
+        saved = await profile_router.save_owned_platforms(
+            OwnedPlatformsIn(owned_platforms=["PC (Microsoft Windows)", "Nintendo Switch"]),
+            user=test_user,
+            db=session,
+        )
+    assert saved.owned_platforms == ["PC (Microsoft Windows)", "Nintendo Switch"]
+
+    async with session_factory() as session:
+        fetched = await profile_router.get_owned_platforms(user=test_user, db=session)
+    assert fetched.owned_platforms == ["PC (Microsoft Windows)", "Nintendo Switch"]
+
+
+async def test_owned_platforms_and_preferences_dont_clobber_each_other(session_factory, test_user):
+    """The whole reason owned_platforms is its own endpoint rather than a
+    field on UserPreferencesIn/save_preferences: that endpoint replaces
+    hard_filters/soft_preferences wholesale on every call. If
+    owned_platforms were folded in, saving defaults from the home page
+    without resending owned_platforms would wipe it, and vice versa.
+    """
+    async with session_factory() as session:
+        await profile_router.save_owned_platforms(
+            OwnedPlatformsIn(owned_platforms=["Mac"]), user=test_user, db=session
+        )
+    async with session_factory() as session:
+        await profile_router.save_preferences(
+            UserPreferencesIn(hard_filters=HardFilters(include_genres=["Horror"]), soft_preferences=SoftPreferences()),
+            user=test_user,
+            db=session,
+        )
+
+    async with session_factory() as session:
+        platforms_after = await profile_router.get_owned_platforms(user=test_user, db=session)
+    assert platforms_after.owned_platforms == ["Mac"], "saving preferences must not clobber owned_platforms"
+
+    async with session_factory() as session:
+        prefs_after = await profile_router.get_preferences(user=test_user, db=session)
+    assert prefs_after.hard_filters["include_genres"] == ["Horror"]
+
+
+async def test_recommendations_excludes_games_unplayable_on_owned_platforms(session_factory, monkeypatch, test_user):
+    """The core Phase 7 guarantee, mirroring the Steam-exclusion test in
+    test_steam_import.py: find a real recommendable game, set owned
+    platforms to something that excludes it, and confirm it's actually
+    gone from the next search - not just that a value got saved.
+    """
+    from app.routers import recommendations as recommendations_router
+    from app.schemas import RecommendationRequest
+
+    async def no_explanations(games, preferences):
+        return {}
+
+    monkeypatch.setattr(recommendations_router, "explain_candidates", no_explanations)
+
+    async with session_factory() as session:
+        baseline = await recommendations_router.get_recommendations(RecommendationRequest(), db=session, user=None)
+    if not baseline.results:
+        pytest.skip("no curated games recommendable - nothing to test against")
+
+    target = next((r for r in baseline.results if r.game.platforms), None)
+    if target is None:
+        pytest.skip("no recommendable game has platform data to exclude against")
+
+    # A platform guaranteed not to overlap with the target's real platforms.
+    fake_platform = "Totally Fake Platform Nothing Owns"
+    assert fake_platform not in target.game.platforms
+
+    async with session_factory() as session:
+        await profile_router.save_owned_platforms(
+            OwnedPlatformsIn(owned_platforms=[fake_platform]), user=test_user, db=session
+        )
+
+    async with session_factory() as session:
+        excluded = await recommendations_router.get_recommendations(
+            RecommendationRequest(), db=session, user=test_user
+        )
+    assert target.game.id not in {r.game.id for r in excluded.results}
+
+    async with session_factory() as session:
+        still_anonymous = await recommendations_router.get_recommendations(
+            RecommendationRequest(), db=session, user=None
+        )
+    assert target.game.id in {r.game.id for r in still_anonymous.results}, (
+        "excluding for a signed-in user must not affect anonymous search"
+    )

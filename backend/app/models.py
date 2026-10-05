@@ -185,6 +185,20 @@ class UserPreferences(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
     hard_filters: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     soft_preferences: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    # Phase 7: platforms/consoles the user actually owns - unlike
+    # hard_filters.platforms (a per-search choice, re-pickable any time),
+    # this is a persistent exclusion applied to every search automatically
+    # (see services/scoring.py exclude_unplayable_platforms), the same
+    # "set once, always-on" pattern as Steam library exclusion (Phase 6).
+    # Deliberately its own column with its own endpoints
+    # (GET/PUT /profile/owned-platforms), not folded into hard_filters -
+    # save_preferences replaces hard_filters/soft_preferences wholesale on
+    # every call, and coupling an unrelated field to that would mean
+    # saving one silently clobbers the other unless both pages always
+    # round-tripped the full state. Empty list = no filter (owns nothing
+    # in particular / hasn't set this yet), same "leave empty to include
+    # all" convention as every other platform filter in this app.
+    owned_platforms: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

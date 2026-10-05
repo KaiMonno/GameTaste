@@ -64,6 +64,10 @@ export interface SteamStatus {
   last_synced_at: string | null;
 }
 
+export interface OwnedPlatforms {
+  owned_platforms: string[];
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // Phase 5: preferences/wishlist are the only endpoints that require a signed-
@@ -187,5 +191,21 @@ export async function importSteamLibrary(token: string | null, steamIdentifier: 
 export async function getSteamStatus(token: string | null): Promise<SteamStatus> {
   const res = await fetch(`${API_URL}/profile/steam-status`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error(`Failed to load Steam status: ${res.status}`);
+  return res.json();
+}
+
+export async function getOwnedPlatforms(token: string | null): Promise<OwnedPlatforms> {
+  const res = await fetch(`${API_URL}/profile/owned-platforms`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error(`Failed to load owned platforms: ${res.status}`);
+  return res.json();
+}
+
+export async function saveOwnedPlatforms(token: string | null, ownedPlatforms: string[]): Promise<OwnedPlatforms> {
+  const res = await fetch(`${API_URL}/profile/owned-platforms`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ owned_platforms: ownedPlatforms }),
+  });
+  if (!res.ok) throw new Error(`Failed to save owned platforms: ${res.status}`);
   return res.json();
 }

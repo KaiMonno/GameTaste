@@ -89,6 +89,17 @@ class WishlistItemOut(BaseModel):
     added_at: datetime
 
 
+class OwnedPlatformsIn(BaseModel):
+    # Phase 7: platforms the user actually owns - a persistent, always-on
+    # exclusion (see services/scoring.py exclude_unplayable_platforms),
+    # not a per-search filter. Empty = not set / no filter.
+    owned_platforms: list[str] = []
+
+
+class OwnedPlatformsOut(BaseModel):
+    owned_platforms: list[str]
+
+
 class SteamImportRequest(BaseModel):
     # Accepts a bare SteamID64, a vanity name, or a full profile URL - see
     # services/steam_client.py _extract_identifier.
