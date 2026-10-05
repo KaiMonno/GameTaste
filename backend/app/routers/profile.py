@@ -99,3 +99,49 @@ async def get_steam_status(
     )
     count, last_synced_at = result.one()
     return SteamStatusOut(linked=count > 0, game_count=count, last_synced_at=last_synced_at)
+
+
+@router.post("/played/{game_id}", status_code=204)
+async def mark_as_played(
+    game_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> None:
+    """Excludes a game from this user's future recommendations - the
+    manual-marking counterpart to a Steam import (see models.UserLibraryItem
+    for why both end up in the same table). A no-op if the game is
+    already excluded for any reason (already marked, or Steam-owned) -
+    the unique (user_id, game_id) constraint means there's only ever one
+    row per game regardless of source.
+    """
+    game = await db.get(Game, game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    existing = await db.execute(
+        select(UserLibraryItem).where(UserLibraryItem.user_id == user.id, UserLibraryItem.game_id == game_id)
+    )
+    if existing.scalar_one_or_none() is not None:
+        return
+
+    db.add(UserLibraryItem(user_id=user.id, game_id=game_id, source="manual"))
+    await db.commit()
+
+
+@router.delete("/played/{game_id}", status_code=204)
+async def unmark_as_played(
+    game_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> None:
+    """Undoes mark_as_played. Removes whatever row exists for this
+    (user, game) pair regardless of source - if it happened to be
+    Steam-sourced, a future re-sync (routers/profile.py
+    import_steam_library) restores it rather than this needing to track
+    which source "owns" the exclusion.
+    """
+    result = await db.execute(
+        select(UserLibraryItem).where(UserLibraryItem.user_id == user.id, UserLibraryItem.game_id == game_id)
+    )
+    item = result.scalar_one_or_none()
+    if item is None:
+        return
+
+    await db.delete(item)
+    await db.commit()

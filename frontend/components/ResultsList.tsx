@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { SignedIn, SignedOut, useAuth } from "@clerk/nextjs";
-import { addToWishlist, type RecommendationResult } from "@/lib/api";
+import { addToWishlist, markAsPlayed, unmarkAsPlayed, type RecommendationResult } from "@/lib/api";
 
 function SaveButton({ gameId }: { gameId: number }) {
   const { getToken } = useAuth();
@@ -35,6 +35,55 @@ function SaveButton({ gameId }: { gameId: number }) {
   );
 }
 
+function PlayedButton({ gameId }: { gameId: number }) {
+  const { getToken } = useAuth();
+  const [state, setState] = useState<"idle" | "marking" | "marked" | "error">("idle");
+
+  async function handleClick() {
+    setState("marking");
+    try {
+      const token = await getToken();
+      await markAsPlayed(token, gameId);
+      setState("marked");
+    } catch {
+      setState("error");
+    }
+  }
+
+  async function handleUndo() {
+    try {
+      const token = await getToken();
+      await unmarkAsPlayed(token, gameId);
+      setState("idle");
+    } catch {
+      // Leave it marked if undo fails - understating is safer than
+      // silently dropping an exclusion the user thinks is still in place.
+    }
+  }
+
+  if (state === "marked") {
+    return (
+      <span className="text-sm text-gray-500">
+        Won&apos;t be recommended again -{" "}
+        <button type="button" onClick={handleUndo} className="underline hover:text-gray-900">
+          undo
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={state === "marking"}
+      className="text-sm text-gray-600 underline hover:text-gray-900 disabled:opacity-50"
+    >
+      {state === "error" ? "Couldn't mark - try again" : state === "marking" ? "Marking..." : "Already played"}
+    </button>
+  );
+}
+
 export default function ResultsList({ results }: { results: RecommendationResult[] }) {
   if (results.length === 0) {
     return <p className="text-gray-500">No results yet — submit the form above.</p>;
@@ -52,12 +101,13 @@ export default function ResultsList({ results }: { results: RecommendationResult
           {r.why_recommended && <p className="mt-2 text-sm text-green-700">{r.why_recommended}</p>}
           {r.why_not && <p className="text-sm text-amber-700">{r.why_not}</p>}
 
-          <div className="mt-2">
+          <div className="mt-2 flex flex-wrap items-center gap-3">
             <SignedIn>
               <SaveButton gameId={r.game.id} />
+              <PlayedButton gameId={r.game.id} />
             </SignedIn>
             <SignedOut>
-              <span className="text-sm text-gray-400">Sign in to save to your wishlist</span>
+              <span className="text-sm text-gray-400">Sign in to save or exclude games</span>
             </SignedOut>
           </div>
         </li>

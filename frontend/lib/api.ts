@@ -156,6 +156,20 @@ export async function removeFromWishlist(token: string | null, gameId: number): 
   if (!res.ok) throw new Error(`Failed to remove game: ${res.status}`);
 }
 
+// Excludes a game from this user's future recommendations - the manual
+// counterpart to a Steam import (see backend/app/models.py
+// UserLibraryItem). Both end up excluding the same way, so there's no
+// separate "played" concept on the backend to keep in sync with.
+export async function markAsPlayed(token: string | null, gameId: number): Promise<void> {
+  const res = await fetch(`${API_URL}/profile/played/${gameId}`, { method: "POST", headers: authHeaders(token) });
+  if (!res.ok) throw new Error(`Failed to mark as played: ${res.status}`);
+}
+
+export async function unmarkAsPlayed(token: string | null, gameId: number): Promise<void> {
+  const res = await fetch(`${API_URL}/profile/played/${gameId}`, { method: "DELETE", headers: authHeaders(token) });
+  if (!res.ok) throw new Error(`Failed to undo: ${res.status}`);
+}
+
 export async function importSteamLibrary(token: string | null, steamIdentifier: string): Promise<SteamImportResult> {
   const res = await fetch(`${API_URL}/profile/steam-import`, {
     method: "POST",

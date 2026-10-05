@@ -15,7 +15,7 @@ integration-test style.
 import pytest
 from sqlalchemy import delete, select
 
-from app.models import Game, User, UserPreferences, WishlistItem
+from app.models import Game, User, UserLibraryItem, UserPreferences, WishlistItem
 from app.routers import profile as profile_router
 from app.routers import wishlist as wishlist_router
 from app.schemas import HardFilters, SoftPreferences, UserPreferencesIn
@@ -39,6 +39,7 @@ async def test_user(session_factory) -> User:
     finally:
         async with session_factory() as session:
             await session.execute(delete(WishlistItem).where(WishlistItem.user_id == user.id))
+            await session.execute(delete(UserLibraryItem).where(UserLibraryItem.user_id == user.id))
             await session.execute(delete(UserPreferences).where(UserPreferences.user_id == user.id))
             await session.execute(delete(User).where(User.id == user.id))
             await session.commit()
@@ -108,3 +109,73 @@ async def test_wishlist_add_twice_is_a_no_op(session_factory, test_user, any_gam
 async def test_wishlist_remove_when_absent_is_a_no_op(session_factory, test_user, any_game_id):
     async with session_factory() as session:
         await wishlist_router.remove_from_wishlist(any_game_id, user=test_user, db=session)  # must not raise
+
+
+async def test_mark_as_played_excludes_from_future_recommendations(session_factory, test_user, monkeypatch):
+    """Uses a real recommendable (curated) game, not just any row in
+    `games` - a non-curated id would never appear in results regardless
+    of exclusion, which would make this assertion pass trivially even if
+    mark_as_played/exclude_owned_games were broken. Same pattern as
+    test_steam_import.py's equivalent test.
+    """
+    from app.routers import recommendations as recommendations_router
+    from app.schemas import RecommendationRequest
+
+    async def no_explanations(games, preferences):
+        return {}
+
+    monkeypatch.setattr(recommendations_router, "explain_candidates", no_explanations)
+
+    async with session_factory() as session:
+        baseline = await recommendations_router.get_recommendations(RecommendationRequest(), db=session, user=None)
+    if not baseline.results:
+        pytest.skip("no curated games recommendable - nothing to mark played in this test")
+    game_id = baseline.results[0].game.id
+
+    async with session_factory() as session:
+        await profile_router.mark_as_played(game_id, user=test_user, db=session)
+
+    async with session_factory() as session:
+        items = await session.execute(
+            select(UserLibraryItem).where(UserLibraryItem.user_id == test_user.id, UserLibraryItem.game_id == game_id)
+        )
+        row = items.scalar_one()
+    assert row.source == "manual"
+
+    async with session_factory() as session:
+        response = await recommendations_router.get_recommendations(
+            RecommendationRequest(), db=session, user=test_user
+        )
+    assert game_id not in {r.game.id for r in response.results}
+
+
+async def test_mark_as_played_twice_is_a_no_op(session_factory, test_user, any_game_id):
+    async with session_factory() as session:
+        await profile_router.mark_as_played(any_game_id, user=test_user, db=session)
+    async with session_factory() as session:
+        await profile_router.mark_as_played(any_game_id, user=test_user, db=session)  # must not raise
+
+    async with session_factory() as session:
+        result = await session.execute(
+            select(UserLibraryItem).where(UserLibraryItem.user_id == test_user.id, UserLibraryItem.game_id == any_game_id)
+        )
+        rows = result.scalars().all()
+    assert len(rows) == 1, "marking the same game played twice should not create a duplicate row"
+
+
+async def test_unmark_as_played_removes_the_exclusion(session_factory, test_user, any_game_id):
+    async with session_factory() as session:
+        await profile_router.mark_as_played(any_game_id, user=test_user, db=session)
+    async with session_factory() as session:
+        await profile_router.unmark_as_played(any_game_id, user=test_user, db=session)
+
+    async with session_factory() as session:
+        result = await session.execute(
+            select(UserLibraryItem).where(UserLibraryItem.user_id == test_user.id, UserLibraryItem.game_id == any_game_id)
+        )
+    assert result.scalar_one_or_none() is None
+
+
+async def test_unmark_as_played_when_absent_is_a_no_op(session_factory, test_user, any_game_id):
+    async with session_factory() as session:
+        await profile_router.unmark_as_played(any_game_id, user=test_user, db=session)  # must not raise

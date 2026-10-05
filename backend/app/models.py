@@ -206,17 +206,26 @@ class WishlistItem(Base):
 
 
 class UserLibraryItem(Base):
-    """Phase 6: a game a user owns, imported from Steam (see
-    services/steam_client.py) - joined against at /recommendations query
-    time to exclude already-owned games (see routers/recommendations.py).
+    """A game a user already owns/has played - joined against at
+    /recommendations query time to exclude it from future results (see
+    routers/recommendations.py). Two ways a row gets here, both ending up
+    in the exact same table since exclusion doesn't care how a game got
+    marked, only that it did:
 
-    Only matched games are stored here - a Steam library entry whose appid
-    has no steam_appid match in `games` (not in our catalog at all) is
-    counted in the import summary but not persisted, since there's nothing
-    to exclude it from. Re-importing replaces this user's rows entirely
-    (see routers/profile.py import_steam_library) rather than merging, so a
-    game removed/refunded on Steam since the last import stops being
-    excluded.
+    - source="steam": imported from Steam (see services/steam_client.py).
+      Only matched games are stored - a Steam library entry whose appid
+      has no steam_appid match in `games` is counted in the import
+      summary but not persisted, nothing to exclude it from. Re-importing
+      replaces this user's "steam" rows entirely (see routers/profile.py
+      import_steam_library), not a merge, so a game removed/refunded on
+      Steam since the last import stops being excluded.
+    - source="manual": the user clicked "Already played" on a
+      recommendation result (see routers/profile.py mark_as_played) -
+      there's no Steam/HLTB signal for this, purely a user action.
+
+    Unique per (user_id, game_id) regardless of source - a game can't be
+    excluded "twice", so marking a Steam-owned game played manually (or
+    vice versa) is a no-op, not a second row.
     """
 
     __tablename__ = "user_library_items"
@@ -225,6 +234,6 @@ class UserLibraryItem(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     game_id: Mapped[int] = mapped_column(ForeignKey("games.id"), nullable=False)
-    source: Mapped[str] = mapped_column(String, nullable=False)  # "steam" - only source for now
+    source: Mapped[str] = mapped_column(String, nullable=False)  # "steam" | "manual"
     playtime_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -236,6 +236,13 @@ never recommendation candidates.
     get_current_user_optional` - None instead of a 401 on a missing/invalid token) so anonymous
     search is completely unaffected; a signed-in user's owned games are excluded from candidates
     before scoring (`services/scoring.py exclude_owned_games`).
+  - "Already played" button (minimal manual counterpart to the Steam import, for a game Steam
+    doesn't know about or a user who skipped linking Steam) - `POST`/`DELETE
+    /profile/played/{game_id}`, writing/removing a `UserLibraryItem` row with `source="manual"`
+    instead of `"steam"`. Exclusion doesn't care which source a row came from (same unique
+    `(user_id, game_id)` constraint, same `exclude_owned_games` query), so this needed no new
+    exclusion logic, only the two endpoints and a button on each result (`components/
+    ResultsList.tsx`).
 
 **Phase 7 — Extended profile**
 - PC specs (compare against IGDB/Steam min-spec data if available), consoles owned, emulator support, controller availability — these affect *filtering* (can this person even run/play this game) more than *matching*, so they slot in as additional hard filters once the core engine exists
