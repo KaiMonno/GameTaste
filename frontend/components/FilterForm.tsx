@@ -20,6 +20,23 @@ function toggle(list: string[], value: string): string[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }
 
+// Shown by default in the platform picker - current-gen consoles + Switch
+// + the PC ecosystem, what most players are actually asking about. Exact
+// strings must match IGDB's platform names (see GET /games/facets) -
+// "PC (Microsoft Windows)", not "PC". Everything else (older consoles,
+// handhelds, VR headsets, ...) is real but far more niche, and sits behind
+// "View more platforms" instead of cluttering the default view.
+const PRIMARY_PLATFORMS = [
+  "PC (Microsoft Windows)",
+  "Mac",
+  "Linux",
+  "PlayStation 5",
+  "PlayStation 4",
+  "Xbox Series X|S",
+  "Xbox One",
+  "Nintendo Switch",
+];
+
 function PillToggle({
   options,
   selected,
@@ -63,6 +80,7 @@ export default function FilterForm({
   const [platformOptions, setPlatformOptions] = useState<string[]>([]);
   const [genreOptions, setGenreOptions] = useState<string[]>([]);
   const [facetsError, setFacetsError] = useState<string | null>(null);
+  const [showAllPlatforms, setShowAllPlatforms] = useState(false);
 
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [genres, setGenres] = useState<string[]>([]);
@@ -95,6 +113,12 @@ export default function FilterForm({
     if (!initialHardFilters || !initialSoftPreferences) return;
     setGenres(initialHardFilters.include_genres);
     setPlatforms(initialHardFilters.platforms);
+    // If a saved default selected a niche platform, expand the "View more"
+    // section so that selection is actually visible rather than silently
+    // applied but hidden.
+    if (initialHardFilters.platforms.some((p) => !PRIMARY_PLATFORMS.includes(p))) {
+      setShowAllPlatforms(true);
+    }
     setRequireMultiplayer(initialHardFilters.require_multiplayer);
     setTargetLengthHours(
       initialSoftPreferences.target_length_hours != null ? String(initialSoftPreferences.target_length_hours) : ""
@@ -174,16 +198,37 @@ export default function FilterForm({
       <div>
         <label className="block text-sm font-medium">Platform</label>
         <p className="text-xs text-gray-500">Leave empty to include all platforms.</p>
-        <div className="mt-2 max-h-48 overflow-y-auto rounded border border-gray-200 p-2">
+        <div className="mt-2 rounded border border-gray-200 p-2">
           {platformOptions.length > 0 ? (
-            <PillToggle
-              options={platformOptions}
-              selected={platforms}
-              onChange={(next) => {
+            (() => {
+              const primary = PRIMARY_PLATFORMS.filter((p) => platformOptions.includes(p));
+              const secondary = platformOptions.filter((p) => !PRIMARY_PLATFORMS.includes(p));
+              const handleChange = (next: string[]) => {
                 setPlatforms(next);
                 setDirtySinceSave(true);
-              }}
-            />
+              };
+              return (
+                <>
+                  <PillToggle options={primary} selected={platforms} onChange={handleChange} />
+                  {secondary.length > 0 && (
+                    <>
+                      {showAllPlatforms && (
+                        <div className="mt-2">
+                          <PillToggle options={secondary} selected={platforms} onChange={handleChange} />
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setShowAllPlatforms((prev) => !prev)}
+                        className="mt-2 text-xs text-gray-500 underline hover:text-gray-900"
+                      >
+                        {showAllPlatforms ? "View fewer platforms" : "View more platforms"}
+                      </button>
+                    </>
+                  )}
+                </>
+              );
+            })()
           ) : (
             <p className="text-sm text-gray-400">Loading platforms...</p>
           )}
