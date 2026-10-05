@@ -5,6 +5,8 @@ attaches (Authorization: Bearer <token>, or the __session cookie), via
 Clerk's own official SDK rather than hand-rolled JWT/JWKS handling.
 """
 
+import logging
+
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -13,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db import get_db
 from app.models import User
+
+logger = logging.getLogger(__name__)
 
 try:
     from clerk_backend_api import AuthenticateRequestOptions, Clerk
@@ -94,12 +98,24 @@ async def get_current_user_optional(
     signed-out (routers/recommendations.py excludes a signed-in user's
     Steam library from results, but anonymous search is still the default
     experience, not an error case).
+
+    Catches any exception, not just HTTPException - Clerk verification
+    currently has no networkless jwt_key configured (see config.py
+    clerk_jwt_key), so every call is a live network request to Clerk; a
+    transient failure there must degrade to "treat as signed out", not
+    turn an otherwise-fine anonymous-friendly search into a 500. This is
+    the one place that distinction matters - get_current_user/
+    get_current_clerk_user_id are used by endpoints where auth is
+    required, so they're meant to fail loudly.
     """
     settings = get_settings()
     if not settings.clerk_secret_key:
         return None
     try:
         clerk_user_id = await get_current_clerk_user_id(request)
+        return await get_current_user(clerk_user_id, db)
     except HTTPException:
         return None
-    return await get_current_user(clerk_user_id, db)
+    except Exception:
+        logger.exception("Clerk verification failed unexpectedly - treating request as signed out")
+        return None

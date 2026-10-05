@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { getSteamStatus, importSteamLibrary, type SteamImportResult, type SteamStatus } from "@/lib/api";
 
@@ -16,6 +16,7 @@ import { getSteamStatus, importSteamLibrary, type SteamImportResult, type SteamS
 export default function SteamImport() {
   const { getToken } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const [status, setStatus] = useState<SteamStatus | null>(null);
@@ -52,7 +53,11 @@ export default function SteamImport() {
     } else {
       refreshStatus();
     }
-    router.replace("/", { scroll: false });
+    // Strips the ?steam=... params without navigating away - this
+    // component doesn't assume which page it's mounted on (previously
+    // hardcoded to "/", which silently redirected away from /profile once
+    // SteamImport moved there - see the Phase 6 profile-tab commit).
+    router.replace(pathname, { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
