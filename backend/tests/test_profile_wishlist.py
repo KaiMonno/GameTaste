@@ -115,7 +115,7 @@ async def test_mark_as_played_excludes_from_future_recommendations(session_facto
     """Uses a real recommendable (curated) game, not just any row in
     `games` - a non-curated id would never appear in results regardless
     of exclusion, which would make this assertion pass trivially even if
-    mark_as_played/exclude_owned_games were broken. Same pattern as
+    mark_as_played/exclude_game_ids were broken. Same pattern as
     test_steam_import.py's equivalent test.
     """
     from app.routers import recommendations as recommendations_router
@@ -271,5 +271,54 @@ async def test_recommendations_excludes_games_unplayable_on_owned_platforms(sess
             RecommendationRequest(), db=session, user=None
         )
     assert target.game.id in {r.game.id for r in still_anonymous.results}, (
+        "excluding for a signed-in user must not affect anonymous search"
+    )
+
+
+async def test_recommendations_excludes_wishlisted_games(session_factory, monkeypatch, test_user):
+    """Wishlisting a game means "I already know about this one" - it
+    should stop being recommended, the same way an owned/already-played
+    game does. Uses a real recommendable (curated) game via a baseline
+    call, same reasoning as the owned-platforms/Steam tests: a non-
+    curated id would never appear regardless of exclusion.
+    """
+    from app.routers import recommendations as recommendations_router
+    from app.schemas import RecommendationRequest
+
+    async def no_explanations(games, preferences):
+        return {}
+
+    monkeypatch.setattr(recommendations_router, "explain_candidates", no_explanations)
+
+    async with session_factory() as session:
+        baseline = await recommendations_router.get_recommendations(RecommendationRequest(), db=session, user=None)
+    if not baseline.results:
+        pytest.skip("no curated games recommendable - nothing to wishlist in this test")
+    wishlisted_game_id = baseline.results[0].game.id
+
+    async with session_factory() as session:
+        await wishlist_router.add_to_wishlist(wishlisted_game_id, user=test_user, db=session)
+
+    async with session_factory() as session:
+        excluded = await recommendations_router.get_recommendations(
+            RecommendationRequest(), db=session, user=test_user
+        )
+    assert wishlisted_game_id not in {r.game.id for r in excluded.results}
+
+    # Removing it from the wishlist makes it eligible again.
+    async with session_factory() as session:
+        await wishlist_router.remove_from_wishlist(wishlisted_game_id, user=test_user, db=session)
+
+    async with session_factory() as session:
+        restored = await recommendations_router.get_recommendations(
+            RecommendationRequest(), db=session, user=test_user
+        )
+    assert wishlisted_game_id in {r.game.id for r in restored.results}
+
+    async with session_factory() as session:
+        still_anonymous = await recommendations_router.get_recommendations(
+            RecommendationRequest(), db=session, user=None
+        )
+    assert wishlisted_game_id in {r.game.id for r in still_anonymous.results}, (
         "excluding for a signed-in user must not affect anonymous search"
     )

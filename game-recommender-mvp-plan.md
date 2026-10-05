@@ -200,7 +200,12 @@ never recommendation candidates.
     saving twice is a no-op rather than a duplicate row (`GET`/`POST`/
     `DELETE /wishlist/{game_id}`). A "Save to wishlist" action appears on
     each recommendation result when signed in; `/wishlist` is a new page
-    listing saved games with a remove action.
+    listing saved games with a remove action. Wishlisting a game also
+    excludes it from that user's future `/recommendations` results
+    (`services/scoring.py exclude_game_ids`, the same generic by-id
+    exclusion Phase 6's owned-games exclusion uses) - once you've saved a
+    game, there's no reason to keep being shown it; removing it from the
+    wishlist makes it eligible again.
   - All three endpoints are best-effort gated: signed-out users can still
     browse and get recommendations exactly as before (Phase 5 added
     nothing gating the core loop) - only the profile/wishlist actions

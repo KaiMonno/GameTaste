@@ -5,14 +5,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-from app.models import User, UserLibraryItem, UserPreferences
+from app.models import User, UserLibraryItem, UserPreferences, WishlistItem
 from app.schemas import GameOut, RecommendationRequest, RecommendationResponse, RecommendationResult
 from app.services.auth import get_current_user_optional
 from app.services.llm_explanations import explain_candidates
 from app.services.scoring import (
     DIVERSITY_SHORTLIST_SIZE,
     apply_hard_filters,
-    exclude_owned_games,
+    exclude_game_ids,
     exclude_unplayable_platforms,
     rank_candidates,
     restrict_to_curated_list,
@@ -46,9 +46,12 @@ async def get_recommendations(
 
     Signed-in is optional, not required (see services/auth.py
     get_current_user_optional) - anonymous search is unaffected. For a
-    signed-in user with an imported Steam library (Phase 6), already-owned
-    games are excluded from candidates before scoring; for one who's set
-    owned platforms (Phase 7), games unplayable on any of them are too.
+    signed-in user: already-owned/played games (Phase 6) and wishlisted
+    games are excluded from candidates before scoring, and so are games
+    unplayable on any platform they've set as owned (Phase 7). Wishlisting
+    a game means "I already know about this one," so there's no reason to
+    keep surfacing it - a game dropped from the wishlist is eligible to be
+    recommended again, same as un-marking "already played".
 
     Explanations are best-effort: if the live Claude call fails for any
     reason, the search still returns its 5 numeric results with
@@ -60,7 +63,10 @@ async def get_recommendations(
 
     if user is not None:
         owned = await db.execute(select(UserLibraryItem.game_id).where(UserLibraryItem.user_id == user.id))
-        query = exclude_owned_games(query, [row[0] for row in owned.all()])
+        query = exclude_game_ids(query, [row[0] for row in owned.all()])
+
+        wishlisted = await db.execute(select(WishlistItem.game_id).where(WishlistItem.user_id == user.id))
+        query = exclude_game_ids(query, [row[0] for row in wishlisted.all()])
 
         prefs = await db.get(UserPreferences, user.id)
         if prefs is not None:

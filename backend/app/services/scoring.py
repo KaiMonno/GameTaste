@@ -162,16 +162,19 @@ def restrict_to_curated_list(query: Select) -> Select:
     return query.join(CuratedListGame, CuratedListGame.game_id == Game.id)
 
 
-def exclude_owned_games(query: Select, owned_game_ids: list[int]) -> Select:
-    """Phase 6: drop a signed-in user's already-owned (Steam-imported)
-    games from the candidate set - see routers/recommendations.py, which
-    only calls this when there's a signed-in user with a non-empty
-    library. A no-op for an empty list rather than an always-true/no-op
-    SQL clause, since `Game.id.not_in([])` is valid but pointless to add.
+def exclude_game_ids(query: Select, game_ids: list[int]) -> Select:
+    """Drop a specific set of games from the candidate set by id - see
+    routers/recommendations.py, which calls this once per reason a
+    signed-in user shouldn't be shown a game again (Phase 6: already
+    owned/played, via UserLibraryItem; later: already on their wishlist,
+    via WishlistItem) rather than needing a separate near-identical
+    function per reason. A no-op for an empty list rather than an
+    always-true/no-op SQL clause, since `Game.id.not_in([])` is valid but
+    pointless to add.
     """
-    if not owned_game_ids:
+    if not game_ids:
         return query
-    return query.where(Game.id.not_in(owned_game_ids))
+    return query.where(Game.id.not_in(game_ids))
 
 
 def exclude_unplayable_platforms(query: Select, owned_platforms: list[str]) -> Select:
