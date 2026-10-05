@@ -6,8 +6,13 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const CLAIMED_ID_PATTERN = /^https:\/\/steamcommunity\.com\/openid\/id\/(\d{1,20})$/;
 
+// Steam import UI lives on its own tab now, not the home page - see
+// app/profile/page.tsx and components/SteamImport.tsx, which reads this
+// same ?steam=... result param.
+const PROFILE_PATH = "/profile";
+
 function errorRedirect(origin: string, message: string): NextResponse {
-  return NextResponse.redirect(`${origin}/?steam=error&message=${encodeURIComponent(message)}`);
+  return NextResponse.redirect(`${origin}${PROFILE_PATH}?steam=error&message=${encodeURIComponent(message)}`);
 }
 
 /** Verifies Steam's OpenID callback and, on success, feeds the resulting
@@ -28,7 +33,7 @@ export async function GET(request: Request) {
   }
 
   if (params.get("openid.mode") === "cancel") {
-    return NextResponse.redirect(`${origin}/`);
+    return NextResponse.redirect(`${origin}${PROFILE_PATH}`);
   }
 
   // Validate every security-relevant field BEFORE trusting anything in
@@ -124,7 +129,7 @@ export async function GET(request: Request) {
       matched: String(result.matched),
       unmatched: String(result.unmatched),
     });
-    return NextResponse.redirect(`${origin}/?${qs.toString()}`);
+    return NextResponse.redirect(`${origin}${PROFILE_PATH}?${qs.toString()}`);
   } catch (err) {
     console.error("[steam-openid] request to backend import endpoint failed", err);
     return errorRedirect(origin, "Couldn't reach the import service - please try again");

@@ -22,6 +22,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Link href="/wishlist" className="text-sm text-gray-600 hover:text-gray-900">
                   Wishlist
                 </Link>
+                <Link href="/profile" className="text-sm text-gray-600 hover:text-gray-900">
+                  Profile
+                </Link>
                 <UserButton afterSignOutUrl="/" />
               </SignedIn>
               <SignedOut>

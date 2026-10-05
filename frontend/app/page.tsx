@@ -1,10 +1,9 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useAuth, SignedIn } from "@clerk/nextjs";
+import { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import FilterForm from "@/components/FilterForm";
 import ResultsList from "@/components/ResultsList";
-import SteamImport from "@/components/SteamImport";
 import {
   getPreferences,
   getRecommendations,
@@ -70,14 +69,6 @@ export default function Home() {
     <main className="mx-auto max-w-2xl px-4 py-12">
       <h1 className="text-2xl font-bold">GameTaste</h1>
       <p className="mt-1 text-gray-600">Tell us what you want, we'll find the game.</p>
-
-      <SignedIn>
-        <div className="mt-8">
-          <Suspense fallback={null}>
-            <SteamImport />
-          </Suspense>
-        </div>
-      </SignedIn>
 
       <div className="mt-8">
         <FilterForm
