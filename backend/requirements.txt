@@ -4,12 +4,25 @@ sqlalchemy[asyncio]==2.0.35
 asyncpg==0.29.0
 psycopg2-binary==2.9.9
 alembic==1.13.2
-pydantic==2.9.2
+# pydantic/httpx bumped from 2.9.2/0.27.2 by installing clerk-backend-api
+# below (Phase 5), which requires newer minimums of both - this file had
+# gone stale against the actual venv since then (the old pins here were
+# never actually installable alongside clerk-backend-api). anthropic
+# bumped 0.34.2 -> 1.11.0 in the same pass: 0.34.2's internal httpx.
+# AsyncClient(proxies=...) call breaks outright on httpx>=0.28 (the
+# `proxies` kwarg was removed) - this silently broke every live
+# explanation call (routers/recommendations.py swallows the exception as
+# best-effort, so it degraded to null why_recommended/why_not with no
+# visible error) from the Phase 5 commit until this one. 1.11.0 vendors
+# its own internal HTTP stack specifically to not depend on the ambient
+# httpx version, which is what actually fixes this rather than just
+# relocating the next version conflict.
+pydantic==2.13.5
 pydantic-settings==2.5.2
-httpx==0.27.2
+httpx==0.28.1
 rapidfuzz==3.9.7
 howlongtobeatpy==1.0.23
-anthropic==0.34.2
+anthropic==1.11.0
 redis==5.0.8
 python-dotenv==1.0.1
 
