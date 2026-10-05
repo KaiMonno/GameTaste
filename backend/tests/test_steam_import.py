@@ -54,6 +54,21 @@ async def matched_game(session_factory):
         return row
 
 
+@pytest.fixture
+async def another_game_id(session_factory, matched_game) -> int:
+    """A second, distinct game (not matched_game) - for tests confirming
+    manually-marked and Steam-sourced rows don't collide or wipe each
+    other out.
+    """
+    matched_id, _ = matched_game
+    async with session_factory() as session:
+        result = await session.execute(select(Game.id).where(Game.id != matched_id).limit(1))
+        row = result.first()
+        if row is None:
+            pytest.skip("not enough games in the catalog for this test")
+        return row[0]
+
+
 async def test_steam_import_matches_and_counts_owned_games(session_factory, monkeypatch, test_user, matched_game):
     game_id, steam_appid = matched_game
 
@@ -120,6 +135,41 @@ async def test_steam_import_replaces_rather_than_merges(session_factory, monkeyp
         rows = await session.execute(select(UserLibraryItem).where(UserLibraryItem.user_id == test_user.id))
         items = rows.scalars().all()
     assert items == [], "the previously-owned game should no longer be in the library after re-import"
+
+
+async def test_steam_reimport_preserves_manually_marked_games(
+    session_factory, monkeypatch, test_user, matched_game, another_game_id
+):
+    """Regression test: import_steam_library used to delete ALL of a
+    user's library rows by user_id alone before reinserting Steam rows,
+    silently wiping out any game marked "Already played" manually every
+    time the user re-synced their Steam library.
+    """
+    game_id, steam_appid = matched_game
+
+    async def fake_resolve(identifier):
+        return "76561190000000001"
+
+    async def fake_owned_games(steam_id64):
+        return [(steam_appid, 42)]
+
+    monkeypatch.setattr(profile_router, "resolve_steam_id64", fake_resolve)
+    monkeypatch.setattr(profile_router, "get_owned_games", fake_owned_games)
+
+    async with session_factory() as session:
+        await profile_router.mark_as_played(another_game_id, user=test_user, db=session)
+
+    async with session_factory() as session:
+        await profile_router.import_steam_library(
+            SteamImportRequest(steam_identifier="my-profile"), user=test_user, db=session
+        )
+
+    async with session_factory() as session:
+        rows = await session.execute(select(UserLibraryItem).where(UserLibraryItem.user_id == test_user.id))
+        by_game = {item.game_id: item.source for item in rows.scalars().all()}
+
+    assert by_game.get(another_game_id) == "manual", "manually-marked game must survive a Steam re-sync"
+    assert by_game.get(game_id) == "steam"
 
 
 async def test_steam_status_reflects_library_state(session_factory, monkeypatch, test_user, matched_game):

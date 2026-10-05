@@ -53,10 +53,14 @@ async def import_steam_library(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> SteamImportResult:
-    """Replaces this user's entire library with what Steam reports right
-    now (delete-then-reinsert, not a merge) - see models.UserLibraryItem,
-    so a game refunded/removed on Steam since the last import stops being
-    excluded from recommendations rather than sticking around forever.
+    """Replaces this user's Steam-sourced library rows with what Steam
+    reports right now (delete-then-reinsert, not a merge, but only for
+    source="steam" rows) - see models.UserLibraryItem, so a game refunded/
+    removed on Steam since the last import stops being excluded from
+    recommendations rather than sticking around forever. "manual" rows
+    (from the "Already played" button, see mark_as_played) are left
+    alone - an earlier version deleted by user_id only, which silently
+    wiped out manually-marked games on every re-sync.
     """
     try:
         steam_id64 = await resolve_steam_id64(body.steam_identifier)
@@ -70,10 +74,19 @@ async def import_steam_library(
         result = await db.execute(select(Game.id, Game.steam_appid).where(Game.steam_appid.in_(appids)))
         matched_games = {appid: game_id for game_id, appid in result.all()}
 
-    await db.execute(delete(UserLibraryItem).where(UserLibraryItem.user_id == user.id))
+    await db.execute(
+        delete(UserLibraryItem).where(UserLibraryItem.user_id == user.id, UserLibraryItem.source == "steam")
+    )
+
+    # A game already excluded via "manual" keeps that row rather than
+    # being replaced - the unique (user_id, game_id) constraint means
+    # inserting a second row for it would fail outright anyway.
+    remaining = await db.execute(select(UserLibraryItem.game_id).where(UserLibraryItem.user_id == user.id))
+    already_excluded = {row[0] for row in remaining.all()}
+
     for appid, playtime in owned:
         game_id = matched_games.get(appid)
-        if game_id is not None:
+        if game_id is not None and game_id not in already_excluded:
             db.add(
                 UserLibraryItem(user_id=user.id, game_id=game_id, source="steam", playtime_minutes=playtime)
             )

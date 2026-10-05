@@ -32,8 +32,10 @@ You could collapse this to a single-language stack (Node/TypeScript everywhere, 
                                 │      FastAPI Backend       │
                                 │  ─ /recommendations        │
                                 │  ─ /games/:id              │
-                                │  ─ /profile, /wishlist     │
-                                │  ─ /import/steam           │
+                                │  ─ /wishlist                │
+                                │  ─ /profile (preferences,  │
+                                │    steam-import/-status,   │
+                                │    played)                 │
                                 └───┬───────────────┬────────┘
                                     │               │
                         reads/writes│               │enqueues jobs
@@ -50,7 +52,6 @@ You could collapse this to a single-language stack (Node/TypeScript everywhere, 
                                                  │  ─ HLTB match + scrape  │
                                                  │  ─ LLM enrichment batch │
                                                  │    (story/gameplay)     │
-                                                 │  ─ Steam import job     │
                                                  └───────────┬─────────────┘
                                                              │
                                      ┌───────────────────────┼───────────────────────┐
@@ -67,6 +68,12 @@ You could collapse this to a single-language stack (Node/TypeScript everywhere, 
                                                      query time, top N results only —
                                                      not a background job)
 ```
+
+Not pictured above (both are request-time, on-demand FastAPI integrations, not
+scheduled workers - the box diagram above predates both): **Clerk** (session
+verification on every authenticated request, see Phase 5) and the **Steam Web
+API** (`GetOwnedGames`, called synchronously inside `POST /profile/steam-import`
+when a user asks to import, not on a schedule, see Phase 6).
 
 ---
 
@@ -118,9 +125,11 @@ wishlist_items                              -- Phase 5, done
   unique(user_id, game_id)
 
 user_library_items                          -- Phase 6, done
-  id (pk), user_id (fk -> users), game_id (fk -> games), source ("steam" only for now)
+  id (pk), user_id (fk -> users), game_id (fk -> games), source ("steam" | "manual")
   playtime_minutes, added_at
-  unique(user_id, game_id) - re-importing replaces rather than merges (see routers/profile.py)
+  unique(user_id, game_id) - re-importing replaces a user's "steam" rows rather than merging
+  (see routers/profile.py import_steam_library); "manual" rows come from the "Already played"
+  button (routers/profile.py mark_as_played) and are untouched by a Steam re-sync
 ```
 
 ---
@@ -137,6 +146,6 @@ user_library_items                          -- Phase 6, done
 ## 6. What Changes as You Move Through Phases
 
 - **Phase 5 (profile) — done:** added `users`/`user_preferences`/`wishlist_items` tables + Clerk as hosted auth. No other architecture change - `/recommendations` and the rest of the core loop are unaffected and still fully usable signed-out.
-- **Phase 6 (Steam import) — done:** added `games.steam_appid` + `user_library_items`. A user-triggered `POST /profile/steam-import` (not a scheduled worker job - Steam's data is pulled on demand when the user asks, not synced nightly) calls `GetOwnedGames` and is joined against at `/recommendations` query time to exclude owned titles for a signed-in user; anonymous search is unaffected.
+- **Phase 6 (Steam import) — done:** added `games.steam_appid` + `user_library_items`. A user-triggered `POST /profile/steam-import` (not a scheduled worker job - Steam's data is pulled on demand when the user asks, not synced nightly) calls `GetOwnedGames` and is joined against at `/recommendations` query time to exclude owned titles for a signed-in user; anonymous search is unaffected. Also added a minimal manual "Already played" button (`POST`/`DELETE /profile/played/{game_id}`) that writes/removes a `source="manual"` row in the same table - no new exclusion logic needed, since exclusion only checks whether a row exists, not its source.
 - **Phase 7 (PC specs / consoles / controller):** these become additional **hard filters** at query time — no new infra, just more filter logic + possibly a small `pc_specs`/`min_requirements` field sourced from Steam if available.
 - **v2 similarity:** swap "similarity to X" from IGDB's `similar_games` list to a proper `pgvector` cosine-similarity query once embeddings are populated — this is a drop-in replacement for that one scoring factor, not a rearchitecture.

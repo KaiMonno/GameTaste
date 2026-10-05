@@ -1,10 +1,19 @@
 # GameTaste
 
 AI game recommender. See [game-recommender-mvp-plan.md](game-recommender-mvp-plan.md) and
-[game-recommender-architecture.md](game-recommender-architecture.md) for the full plan — this
-scaffold implements the **Phase 1-3 MVP cut**: data foundation, hard-filter + soft-score
-recommendation engine, and a single-form frontend. No accounts, no Celery workers, no LLM calls
-wired into the request path yet (services exist for phase 2/4, just not called from the routes).
+[game-recommender-architecture.md](game-recommender-architecture.md) for the full plan and the
+reasoning behind every decision - both are kept current, phase by phase, as the single source of
+truth for *why* something works the way it does, not just *what* the code does.
+
+**Current state: Phases 1-6 are done**, plus a minimal manual "Already played" exclusion button
+(folded into Phase 6, see mvp-plan.md). That's the full core loop (hard filters → soft-score
+ranking → diversity selection → live LLM "why you'll like it" blurbs) *and* the full profile
+system (Clerk accounts, saved preference defaults, wishlist, Steam library import via OpenID
+sign-in or a pasted profile URL, manual "Already played" marking) - all working end to end,
+signed-in or anonymous. Not yet: Phase 7 (extended profile / PC specs), Phase 8 (Backloggd
+import), and Celery/cron scheduling (the sync/enrich/backfill scripts are still run by hand).
+If you're picking this up fresh, read **"Gotchas found the hard way"** below before you start -
+every one of them cost real debugging time once already.
 
 ## Layout
 
@@ -75,54 +84,120 @@ frontend/   Next.js filter form + results list
    ```
    App is up at http://localhost:3000.
 
-5. **Get API keys before the sync scripts will work:**
-   - IGDB/Twitch: https://api-docs.igdb.com/#account-creation (needed for `sync_igdb.py`)
-   - Anthropic: https://console.anthropic.com (needed once you wire up phase 2/4 enrichment)
+5. **Get your own API keys/accounts.** None of these are shared between developers - each of you
+   registers your own, in your own `backend/.env`/`frontend/.env.local` (see each file's
+   `.env.example` for every var name):
+   - **IGDB/Twitch** (`IGDB_CLIENT_ID`/`SECRET`): https://api-docs.igdb.com/#account-creation -
+     needed for `sync_igdb.py` and anything that touches the catalog.
+   - **Anthropic** (`ANTHROPIC_API_KEY`): https://console.anthropic.com - needed for enrichment
+     and the live per-search explanations. Costs real money per call; see mvp-plan.md Phase 2/4
+     for measured per-call costs before running enrichment at scale.
+   - **Clerk** (`CLERK_SECRET_KEY` + frontend's `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`/
+     `CLERK_SECRET_KEY`): https://clerk.com - free, create your own application, API Keys page.
+     Required for accounts/wishlist/Steam import/preferences - without it every `/profile/*` and
+     `/wishlist/*` endpoint 500s (fails closed, not open - see "Gotchas" below) and anonymous
+     search is all that works.
+   - **Steam Web API** (`STEAM_API_KEY`): https://steamcommunity.com/dev/apikey - free, needed
+     for Steam library import. *After* you've populated `games` (see "What to do first" below -
+     this does nothing useful against an empty table), run
+     `python -m app.scripts.backfill_igdb_fields` once so those rows get a `steam_appid` to match
+     against (new rows get it automatically from then on via `sync_igdb.py`/`enrich_games.py`).
 
 Everything above — the async SQLAlchemy extra, the pinned `howlongtobeatpy` version that
 actually works against HLTB's current site — is already correct in `requirements.txt`, so a
 plain `pip install -r requirements.txt` on a fresh machine should not hit the errors that were
 worked through while first building this (see git history / commit messages if curious).
 
+## Gotchas found the hard way
+
+Every one of these cost real debugging time once already - check this list before assuming
+something's broken.
+
+- **The backend caches `.env` for the whole process lifetime.** `get_settings()` is
+  `lru_cache`'d, so editing `backend/.env` (a new key, a changed value) does nothing to an
+  already-running `uvicorn` process - `--reload` only reacts to `.py` file changes, not `.env`.
+  Symptom: a brand new `CLERK_SECRET_KEY`/`STEAM_API_KEY` you just set still 500s/401s as if it
+  were empty. Fix: actually kill and restart `uvicorn`, every time you touch `.env`. Bit this
+  project twice (Clerk, then Steam) before this line got written.
+- **Don't run `npm run build` while `npm run dev` is running against the same `frontend/`.**
+  Both write to `.next/` and a concurrent build corrupts the dev server's cache - symptom is a
+  cryptic `Cannot find module './13.js'` (or similar numbered-chunk) error on page load. Fix:
+  stop the dev server first, build, then `rm -rf .next` and restart `npm run dev` fresh. If you
+  hit the error without realizing why, the same fix (stop, `rm -rf .next`, restart) resolves it
+  regardless of cause.
+- **A new migration needs `alembic upgrade head`, every time.** Pulling someone else's commit
+  that adds a column/table doesn't apply it to *your* local Postgres - `git pull` and `alembic
+  upgrade head` are two separate steps. Run the latter after every pull that touches
+  `backend/alembic/versions/`.
+- **Installing/upgrading one backend package can silently break another via a shared transitive
+  dependency, with no error until the broken code path actually runs.** Installing
+  `clerk-backend-api` once pulled in a newer `httpx` as a side effect, which silently broke the
+  pinned `anthropic` SDK's internal client construction - `pip install` succeeded, the test
+  suite passed (it mocks the Claude call), and the backend ran fine; only a *live* call to
+  `explain_candidates` actually failed, and `/recommendations` is designed to swallow that
+  failure as best-effort (same as a real Claude outage), so every search silently returned
+  `why_recommended: null` with no visible error for an entire phase of work. If you add or
+  upgrade any package, don't just trust `pip install` succeeding or the test suite passing -
+  also do one live smoke test of anything that constructs an API client (Anthropic, Steam,
+  Clerk) end to end. `requirements.txt` pins should always match what's *actually* installed
+  (`pip freeze` the specific package) - check this explicitly after any install that touches a
+  shared dependency like `httpx`/`pydantic`, since pip resolving a transitive bump silently is
+  exactly how this one slipped through.
+- **No shared database between developers.** Each of you runs IGDB sync / HLTB match / LLM
+  enrichment / the curated-list sync against your *own* local Postgres - there's no way to
+  "pull" another developer's catalog data via git. If recommendations come back empty or a
+  game you expect is missing, that's almost always "I haven't synced/enriched/curated this game
+  on my machine yet," not a code bug.
+
 ## What to do first (in order)
 
-1. **Get IGDB credentials** and run the sync script against a small page to prove the pipeline:
+**Important, easy to miss:** `/recommendations` only ever returns games from the hand-curated
+list (the repo-root `Game List` file → `curated_list_games` table, see mvp-plan.md Phase 3.7) -
+*not* whatever the broad IGDB sync pulls in. Those are two separate population paths. Step 1
+below is the one that actually matters for getting real results; step 4 (broad sync) is useful
+context/tuning but isn't what `/recommendations` reads from.
+
+1. **Get IGDB credentials**, then populate the curated set - this one script does IGDB search +
+   HLTB match for every title in `Game List` in one pass (no separate HLTB step needed for these):
    ```
    cd backend && source .venv/bin/activate
-   python -m app.scripts.sync_igdb --pages 1
+   python -m app.scripts.sync_curated_list
    ```
-   This pulls the 500 most-popular games into `games`. Check the row count and spot-check a few
-   records before scaling up.
+   Re-run this after any edit to the repo-root `Game List` file - it diffs current membership
+   against the file (adds newly-listed titles, removes delisted ones) rather than taking manual
+   add/remove commands.
 
-2. **Run the HLTB matcher** on those same games:
-   ```
-   python -m app.scripts.match_hltb
-   ```
-   Expect some misses — HLTB has no official API (see mvp-plan.md §1/§5). Check the logs for
-   unmatched titles rather than assuming 100% coverage.
-
-3. **Hit `/recommendations`** from the frontend (or `curl`/`/docs`) with a small synced catalog
-   and see whether the hard-filter + soft-score ranking *feels* right. This is Phase 3's whole
-   point — validate scoring quality before spending any LLM budget. Tune `WEIGHTS` in
+2. **Hit `/recommendations`** from the frontend (or `curl`/`/docs`) and see whether the
+   hard-filter + soft-score ranking *feels* right (numeric `match_score` only so far - no
+   `why_recommended`/`why_not` yet, that needs step 3). Tune `WEIGHTS` in
    [backend/app/services/scoring.py](backend/app/services/scoring.py) based on what you see.
 
-4. **Only once scoring feels right**, add your `ANTHROPIC_API_KEY` and wire
-   [backend/app/services/llm_enrichment.py](backend/app/services/llm_enrichment.py) into
-   `scripts/enrich_games.py` (already stubbed, just needs a real run + spot-check), then wire
-   [backend/app/services/llm_explanations.py](backend/app/services/llm_explanations.py) into the
-   `/recommendations` route for the "why you'll like it" blurbs (Phase 4).
+3. **Once scoring feels right**, add your `ANTHROPIC_API_KEY` (see "Get your own API
+   keys/accounts" above) and run `python -m app.scripts.enrich_games --limit 10` first - costs
+   real money per call, so spot-check a small batch's accuracy before scaling up to the full
+   curated set (drop `--limit` once you trust it; no args defaults to curated-only, same scope
+   as `/recommendations` itself). Populates the v3 enrichment fields both `llm_enrichment.py`
+   (this offline pass) and `llm_explanations.py` (the live, per-search blurbs, Phase 4) depend
+   on - once this has run, `why_recommended`/`why_not` start showing up on real requests.
 
-5. **Accounts, saved preference defaults, and wishlist (Phase 5) are done** — Clerk handles
-   sign-in/sign-up; set `CLERK_SECRET_KEY` (backend) and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` +
-   `CLERK_SECRET_KEY` (frontend) from your own Clerk dashboard to use them locally.
+4. **(Optional) Broader catalog sync**, for context/tuning or future re-curation - *not* required
+   for `/recommendations`, which never reads from outside the curated set:
+   ```
+   python -m app.scripts.sync_igdb --pages 1   # 500 most-popular games into `games`
+   python -m app.scripts.match_hltb            # HLTB length for those same games
+   ```
+   Expect some HLTB misses — it has no official API (see mvp-plan.md §1/§5); check the logs for
+   unmatched titles rather than assuming 100% coverage.
 
-6. **Steam library import (Phase 6) is done** — set `STEAM_API_KEY` (register at
-   [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)), then run
-   `python -m app.scripts.backfill_igdb_fields` once so existing games get a `steam_appid` to
-   match against. A signed-in user pastes their profile URL/vanity name/SteamID64 and owned games
-   get excluded from their recommendations. **Not yet:** Celery/cron scheduling — the sync/match/
-   enrich scripts are meant to be run by hand for now, then promoted to a scheduled job once you
-   trust the pipeline.
+5. **Accounts/wishlist/preferences (Phase 5) and Steam import (Phase 6) are both done** and need
+   no further wiring - just the Clerk/Steam keys from "Get your own API keys/accounts" above.
+   Once those are set (**and the backend restarted** - see Gotchas), sign in via the header, and:
+   - Save default filters from the home page, see your wishlist at `/wishlist`.
+   - Import your Steam library (OpenID "Sign in through Steam" or a pasted profile URL) and
+     manually mark individual games "Already played" from `/profile` - both exclude from future
+     `/recommendations` results the same way.
+   **Not yet:** Celery/cron scheduling — the sync/match/enrich scripts are meant to be run by
+   hand for now, then promoted to a scheduled job once you trust the pipeline.
 
 ## Notes on what's deliberately stubbed
 

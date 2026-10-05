@@ -1,0 +1,2 @@
+See [AGENTS.md](AGENTS.md) - the instructions there apply to Claude Code the same as any other
+agent working in this repo.
