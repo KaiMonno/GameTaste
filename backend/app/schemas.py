@@ -19,6 +19,7 @@ class GameOut(BaseModel):
     hltb_completionist: float | None
     story_gameplay_ratio: float | None
     custom_categories: list[str]
+    cover_url: str | None
 
 
 class HardFilters(BaseModel):

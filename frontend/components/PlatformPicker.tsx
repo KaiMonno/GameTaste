@@ -1,5 +1,8 @@
 "use client";
 
+import { Toggle } from "@/components/ui/toggle";
+import { Button } from "@/components/ui/button";
+
 // Shown by default - current-gen consoles + Switch + the PC ecosystem,
 // what most players are actually asking about. Exact strings must match
 // IGDB's platform names (see GET /games/facets) - "PC (Microsoft
@@ -40,16 +43,14 @@ export function PillToggle({
       {options.map((option) => {
         const active = selected.includes(option);
         return (
-          <button
+          <Toggle
             key={option}
-            type="button"
-            onClick={() => onChange(toggle(selected, option))}
-            className={`rounded-full border px-3 py-1 text-sm ${
-              active ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700"
-            }`}
+            pressed={active}
+            onPressedChange={() => onChange(toggle(selected, option))}
+            className="h-auto min-w-0 rounded-full border border-input px-3 py-1 text-sm font-normal data-[pressed]:border-primary data-[pressed]:bg-primary data-[pressed]:text-primary-foreground"
           >
             {option}
-          </button>
+          </Toggle>
         );
       })}
     </div>
@@ -82,13 +83,9 @@ export default function PlatformPicker({
               <PillToggle options={secondary} selected={selected} onChange={onChange} />
             </div>
           )}
-          <button
-            type="button"
-            onClick={onToggleShowAll}
-            className="mt-2 text-xs text-gray-500 underline hover:text-gray-900"
-          >
+          <Button type="button" variant="link" size="sm" onClick={onToggleShowAll} className="mt-2 h-auto p-0 text-xs text-muted-foreground">
             {showAll ? "View fewer platforms" : "View more platforms"}
-          </button>
+          </Button>
         </>
       )}
     </>

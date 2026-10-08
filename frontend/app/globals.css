@@ -1,3 +1,187 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+/*
+  Maps the raw --background/--foreground/etc CSS variables (defined below in
+  :root/.dark) to Tailwind v4 theme tokens, so utilities like `bg-background`
+  and `border-border` actually get generated. The `@tailwindcss/upgrade`
+  codemod that migrated this project from v3 crashed partway through (an
+  unrelated `@utility` nesting issue in the shadcn/tw-animate-css imports)
+  before writing this block - without it, every shadcn component class
+  referencing these tokens fails to compile.
+*/
+@theme inline {
+  /* Registers font-heading as a real Tailwind utility - a plain
+     `.theme { --font-heading: ... }` class selector (added below, in
+     @layer base) is NOT visible to Tailwind's utility generator, which
+     only generates font-* utilities from --font-* keys declared inside an
+     @theme block. Without this line, every `className="font-heading"` in
+     the app (every CardTitle, every page h1) compiled to nothing - no
+     rule, no error, silently still rendering font-sans. Invisible before
+     this file set --font-heading equal to --font-sans anyway; became a
+     real bug once that changed to a distinct serif font that then never
+     actually applied anywhere. */
+  --font-heading: var(--font-heading);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+/*
+  "Reading room" theme: warm parchment/paper backgrounds, deep leather-
+  burgundy primary, brass/gold accent - applied through the same CSS
+  variables every shadcn component already consumes (bg-primary, bg-card,
+  border-border, ...), so retheming these two blocks restyles the whole
+  app without touching individual component files. --font-heading switches
+  every CardTitle (FilterForm, each result, Steam/platforms cards, ...) to
+  the serif display font in one place - see layout.tsx for where
+  --font-serif itself is defined.
+
+  --spine-1..5 are a separate, decorative-only palette (book-cover colors
+  cycled per result card in ResultsList.tsx) - deliberately not reused for
+  any semantic token above, so a result card's accent color never implies
+  state/meaning the way bg-primary or bg-destructive do.
+*/
+@layer base {
+  .theme {
+    --font-heading: var(--font-serif);
+    --font-sans: var(--font-sans)
+  }
+  :root {
+    --background: oklch(0.97 0.014 80);
+    --foreground: oklch(0.24 0.035 40);
+    --card: oklch(0.99 0.01 75);
+    --card-foreground: oklch(0.24 0.035 40);
+    --popover: oklch(0.99 0.01 75);
+    --popover-foreground: oklch(0.24 0.035 40);
+    --primary: oklch(0.33 0.11 22);
+    --primary-foreground: oklch(0.97 0.012 75);
+    --secondary: oklch(0.88 0.035 65);
+    --secondary-foreground: oklch(0.28 0.03 40);
+    --muted: oklch(0.93 0.018 70);
+    --muted-foreground: oklch(0.46 0.03 50);
+    --accent: oklch(0.78 0.1 75);
+    --accent-foreground: oklch(0.25 0.03 40);
+    --destructive: oklch(0.55 0.21 25);
+    --border: oklch(0.83 0.03 65);
+    --input: oklch(0.88 0.025 65);
+    --ring: oklch(0.7 0.09 75);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --radius: 0.5rem;
+    --spine-1: oklch(0.35 0.12 22);
+    --spine-2: oklch(0.4 0.08 150);
+    --spine-3: oklch(0.38 0.1 265);
+    --spine-4: oklch(0.68 0.12 80);
+    --spine-5: oklch(0.48 0.08 200);
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0)
+  }
+  .dark {
+    --background: oklch(0.19 0.02 45);
+    --foreground: oklch(0.92 0.016 75);
+    --card: oklch(0.23 0.022 45);
+    --card-foreground: oklch(0.92 0.016 75);
+    --popover: oklch(0.23 0.022 45);
+    --popover-foreground: oklch(0.92 0.016 75);
+    --primary: oklch(0.52 0.15 20);
+    --primary-foreground: oklch(0.97 0.012 75);
+    --secondary: oklch(0.32 0.025 50);
+    --secondary-foreground: oklch(0.9 0.015 75);
+    --muted: oklch(0.28 0.02 50);
+    --muted-foreground: oklch(0.66 0.02 65);
+    --accent: oklch(0.66 0.1 75);
+    --accent-foreground: oklch(0.18 0.02 45);
+    --destructive: oklch(0.62 0.2 25);
+    --border: oklch(1 0 0 / 12%);
+    --input: oklch(1 0 0 / 16%);
+    --ring: oklch(0.62 0.1 75);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --spine-1: oklch(0.52 0.14 22);
+    --spine-2: oklch(0.52 0.1 150);
+    --spine-3: oklch(0.5 0.12 265);
+    --spine-4: oklch(0.72 0.13 80);
+    --spine-5: oklch(0.55 0.1 200);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0)
+  }
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}

@@ -12,6 +12,7 @@ export interface GameOut {
   hltb_completionist: number | null;
   story_gameplay_ratio: number | null;
   custom_categories: string[];
+  cover_url: string | null;
 }
 
 export interface RecommendationResult {
@@ -90,6 +91,21 @@ export async function getFacets(): Promise<Facets> {
 
   if (!res.ok) {
     throw new Error(`Failed to load filter options: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+// Fallback for the game detail page when there's no cached search result
+// for this id (e.g. a reload after sessionStorage was cleared, or a direct
+// link) - plain game data only, no match_score/why_recommended/why_not,
+// since those only exist in the context of a specific search.
+export async function getGame(id: number): Promise<GameOut | null> {
+  const res = await fetch(`${API_URL}/games/${id}`);
+
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Failed to load game: ${res.status}`);
   }
 
   return res.json();

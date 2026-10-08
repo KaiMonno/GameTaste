@@ -32,17 +32,21 @@ from app.models import Game
 from app.schemas import SoftPreferences
 from app.services.anthropic_client import MODEL_HAIKU, call_claude_json
 
-# Short enough to scan at a glance in a results list, per product direction -
-# these are one-line blurbs under each result, not paragraphs. Two numbers,
-# not one: the prompt asks for PROMPT_TARGET_CHARS, but Haiku treats a
-# character count as a rough target rather than a hard rule - observed
-# overshooting a stated 90-char "hard limit" by 10-15 chars consistently
-# (101-104 actual). Asking for a lower target than what's actually enforced
-# leaves room for that overshoot while still landing under HARD_MAX_CHARS in
-# the normal case; _enforce_max_length is the real guarantee (see below),
-# not the prompt wording.
-PROMPT_TARGET_CHARS = 65
-HARD_MAX_CHARS = 90
+# These used to be one-line blurbs crammed under each result in a dense
+# list (hence a tight 90-char hard cap) - now shown on their own dedicated
+# game detail page (app/games/[id]/page.tsx) with real room, so the cap
+# only needs to stop a genuinely runaway response, not keep things to a
+# single visual line. Still "one short sentence," not a paragraph - the
+# prompt's own ask - but it should read as a complete sentence, not get
+# chopped mid-thought. Two numbers, not one: the prompt asks for
+# PROMPT_TARGET_CHARS, but Haiku treats a character count as a rough target
+# rather than a hard rule - observed overshooting a stated hard limit by
+# 10-15 chars consistently. Asking for a lower target than what's actually
+# enforced leaves room for that overshoot while still landing under
+# HARD_MAX_CHARS in the normal case; _enforce_max_length is the real
+# guarantee (see below), not the prompt wording.
+PROMPT_TARGET_CHARS = 140
+HARD_MAX_CHARS = 220
 
 EXPLANATION_SYSTEM_PROMPT = f"""You are writing short, personalized recommendation blurbs for a \
 video game recommendation engine.

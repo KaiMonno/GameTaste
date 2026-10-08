@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import FilterForm from "@/components/FilterForm";
 import ResultsList from "@/components/ResultsList";
+import BookshelfBanner from "@/components/BookshelfBanner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   getPreferences,
   getRecommendations,
@@ -12,6 +14,7 @@ import {
   type RecommendationResult,
   type SoftPreferences,
 } from "@/lib/api";
+import { saveLastResults } from "@/lib/resultsCache";
 
 export default function Home() {
   const { isSignedIn, getToken } = useAuth();
@@ -47,6 +50,7 @@ export default function Home() {
       const token = isSignedIn ? await getToken() : null;
       const data = await getRecommendations(hardFilters, softPreferences, token);
       setResults(data);
+      saveLastResults(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -67,8 +71,10 @@ export default function Home() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-12">
-      <h1 className="text-2xl font-bold">GameTaste</h1>
-      <p className="mt-1 text-gray-600">Tell us what you want, we'll find the game.</p>
+      <BookshelfBanner />
+
+      <h1 className="mt-6 font-heading text-2xl font-semibold tracking-tight">GameTaste</h1>
+      <p className="mt-1 text-muted-foreground">Tell us what you want, we&apos;ll find the game.</p>
 
       <div className="mt-8">
         <FilterForm
@@ -81,7 +87,11 @@ export default function Home() {
         />
       </div>
 
-      {error && <p className="mt-6 text-red-600">{error}</p>}
+      {error && (
+        <Alert variant="destructive" className="mt-6">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       <div className="mt-8">
         <ResultsList results={results} />

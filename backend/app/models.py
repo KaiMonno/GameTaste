@@ -102,6 +102,11 @@ class Game(Base):
     # or that hasn't been backfilled yet - see scripts/backfill_igdb_fields.py.
     steam_appid: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
 
+    # IGDB's cover image id (e.g. "cobfzp"), not a full URL - see cover_url
+    # below for why. Null for a game with no cover art on IGDB, or synced
+    # before this field existed (see scripts/backfill_igdb_fields.py).
+    cover_image_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -110,6 +115,19 @@ class Game(Base):
     # embedding (pgvector) is a v2 addition once similarity search is needed -
     # see game-recommender-architecture.md section 6. Add via a new migration
     # rather than guessing the column shape now.
+
+    @property
+    def cover_url(self) -> str | None:
+        """Full image URL, built from cover_image_id - stored as just the id
+        (not the whole URL) so the size (t_cover_big below) can change later
+        without a backfill. A plain Python property, not a column: GameOut
+        reads it the same way either way (pydantic's from_attributes calls
+        getattr, which works on properties too), and there's nothing to
+        keep in sync by storing it twice.
+        """
+        if not self.cover_image_id:
+            return None
+        return f"https://images.igdb.com/igdb/image/upload/t_cover_big/{self.cover_image_id}.jpg"
 
 
 class BackloggdTop100(Base):

@@ -48,9 +48,15 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # match a user's imported Steam library back to our own game ids by Steam
 # appid, an id-to-id join rather than fuzzy title matching - see
 # scripts/sync_igdb.py _extract_steam_appid.
+#
+# `cover.image_id` (confirmed via live query, e.g. "cobfzp") builds a real
+# image URL via IGDB's CDN: https://images.igdb.com/igdb/image/upload/
+# t_{size}/{image_id}.jpg - free, no separate image service or per-request
+# cost, same API/credentials already in use. See models.Game.cover_url.
 GAME_FIELDS = (
     "id,name,summary,genres.name,platforms.name,game_modes.name,rating,rating_count,"
-    "similar_games,game_type,collections.name,external_games.uid,external_games.external_game_source"
+    "similar_games,game_type,collections.name,external_games.uid,external_games.external_game_source,"
+    "cover.image_id"
 )
 
 

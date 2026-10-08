@@ -4,6 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { getSteamStatus, importSteamLibrary, type SteamImportResult, type SteamStatus } from "@/lib/api";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
 
 /** The single source of truth for "is Steam linked" is the backend
  * (GET /profile/steam-status), not a one-time toast tied to how the user
@@ -80,60 +85,64 @@ export default function SteamImport() {
   }
 
   return (
-    <div className="rounded border border-gray-200 bg-white p-4">
-      <h2 className="font-semibold">Steam library</h2>
-
-      {status?.linked && (
-        <p className="mt-1 text-sm text-green-700">
-          ✓ Linked - {status.game_count} owned game{status.game_count === 1 ? "" : "s"} excluded from your
-          recommendations
-          {status.last_synced_at ? ` (last synced ${new Date(status.last_synced_at).toLocaleString()})` : ""}.
-        </p>
-      )}
-
-      <p className="mt-1 text-sm text-gray-600">
-        {status?.linked
-          ? "Re-sync any time to pick up newly bought or removed games."
-          : "Games you already own won't show up in your recommendations. Your Steam profile and game details need to be set to Public."}
-      </p>
-
-      <a
-        href="/api/steam-openid/start"
-        className="mt-3 inline-block rounded bg-[#1b2838] px-4 py-2 text-sm text-white hover:bg-[#2a3f5a]"
-      >
-        {status?.linked ? "Re-sync with Steam" : "Sign in through Steam"}
-      </a>
-
-      <div className="my-3 flex items-center gap-2 text-xs text-gray-400">
-        <div className="h-px flex-1 bg-gray-200" />
-        or paste it manually
-        <div className="h-px flex-1 bg-gray-200" />
-      </div>
-
-      <form onSubmit={handleImport} className="flex gap-2">
-        <input
-          type="text"
-          value={steamIdentifier}
-          onChange={(e) => setSteamIdentifier(e.target.value)}
-          placeholder="Profile URL, vanity name, or SteamID64"
-          className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm"
-        />
-        <button
-          type="submit"
-          disabled={state === "importing"}
-          className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+    <Card>
+      <CardHeader>
+        <CardTitle>Steam library</CardTitle>
+        {status?.linked && (
+          <CardDescription className="text-green-700 dark:text-green-400">
+            ✓ Linked - {status.game_count} owned game{status.game_count === 1 ? "" : "s"} excluded from your
+            recommendations
+            {status.last_synced_at ? ` (last synced ${new Date(status.last_synced_at).toLocaleString()})` : ""}.
+          </CardDescription>
+        )}
+        <CardDescription>
+          {status?.linked
+            ? "Re-sync any time to pick up newly bought or removed games."
+            : "Games you already own won't show up in your recommendations. Your Steam profile and game details need to be set to Public."}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Button
+          size="sm"
+          render={<a href="/api/steam-openid/start" />}
+          className="bg-[#1b2838] text-white hover:bg-[#2a3f5a]"
         >
-          {state === "importing" ? "Importing..." : "Import"}
-        </button>
-      </form>
+          {status?.linked ? "Re-sync with Steam" : "Sign in through Steam"}
+        </Button>
 
-      {state === "done" && result && (
-        <p className="mt-2 text-sm text-green-700">
-          Found {result.total_owned} owned games - {result.matched} will be excluded from your
-          recommendations{result.unmatched > 0 ? ` (${result.unmatched} aren't in our catalog)` : ""}.
-        </p>
-      )}
-      {state === "error" && error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-    </div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Separator className="flex-1" />
+          or paste it manually
+          <Separator className="flex-1" />
+        </div>
+
+        <form onSubmit={handleImport} className="flex gap-2">
+          <Input
+            type="text"
+            value={steamIdentifier}
+            onChange={(e) => setSteamIdentifier(e.target.value)}
+            placeholder="Profile URL, vanity name, or SteamID64"
+            className="flex-1"
+          />
+          <Button type="submit" size="sm" disabled={state === "importing"}>
+            {state === "importing" ? "Importing..." : "Import"}
+          </Button>
+        </form>
+
+        {state === "done" && result && (
+          <Alert>
+            <AlertDescription>
+              Found {result.total_owned} owned games - {result.matched} will be excluded from your
+              recommendations{result.unmatched > 0 ? ` (${result.unmatched} aren't in our catalog)` : ""}.
+            </AlertDescription>
+          </Alert>
+        )}
+        {state === "error" && error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
   );
 }
