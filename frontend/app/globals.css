@@ -94,11 +94,16 @@
   state/meaning the way bg-primary or bg-destructive do.
 */
 @layer base {
-  .theme {
-    --font-heading: var(--font-serif);
-    --font-sans: var(--font-sans)
-  }
   :root {
+    /* Was a separate `.theme { }` class selector - never actually applied
+       to any element (checked layout.tsx: <html> only ever gets
+       "font-sans"/font-variable classes), so --font-heading's real value
+       was never active anywhere and every font-heading usage silently
+       fell back to font-sans - the exact bug the comment above this block
+       describes as already fixed once, recurring via a different cause.
+       Fonts don't change between light/dark, so :root (unconditional,
+       same as every other token here) is correct, not a .dark variant. */
+    --font-heading: var(--font-serif);
     --background: oklch(0.97 0.014 80);
     --foreground: oklch(0.24 0.035 40);
     --card: oklch(0.99 0.01 75);
